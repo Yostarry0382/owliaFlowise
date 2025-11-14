@@ -1,13 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { HumanReviewConfig, ReviewStatus } from '../../../types/flowise';
+
+// Human review status store (in production, use a database)
+const reviewStore = new Map<string, ReviewStatus>();
+const pendingReviews = new Map<string, any>();
 
 // フロー実行のためのAPIルート
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { flowId, nodes, edges, input } = body;
+    const { flowId, nodes, edges, input, action, reviewId, reviewData } = body;
+
+    // Handle review actions
+    if (action === 'review') {
+      return handleReviewAction(reviewId, reviewData);
+    }
+
+    // Check for pending reviews
+    if (action === 'check-pending') {
+      return checkPendingReviews();
+    }
 
     // フローの実行ロジック（簡略化バージョン）
-    const executionResult = await executeFlow(nodes, edges, input);
+    const executionResult = await executeFlow(flowId, nodes, edges, input);
 
     return NextResponse.json({
       success: true,
@@ -16,6 +31,7 @@ export async function POST(request: NextRequest) {
       output: executionResult.output,
       executionTime: executionResult.executionTime,
       logs: executionResult.logs,
+      pendingReview: executionResult.pendingReview,
     });
   } catch (error) {
     console.error('Flow execution error:', error);
@@ -30,11 +46,71 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Handle human review actions
+function handleReviewAction(reviewId: string, reviewData: any) {
+  const review = pendingReviews.get(reviewId);
+  if (!review) {
+    return NextResponse.json(
+      { success: false, error: 'Review not found' },
+      { status: 404 }
+    );
+  }
+
+  const { status, editedOutput, comments } = reviewData;
+
+  // Update review status
+  const reviewStatus: ReviewStatus = {
+    nodeId: review.nodeId,
+    status: status,
+    reviewedAt: new Date(),
+    originalOutput: review.output,
+    editedOutput: editedOutput,
+    comments: comments
+  };
+
+  reviewStore.set(reviewId, reviewStatus);
+
+  // Resume execution with the review result
+  review.resolve({
+    approved: status === 'approved',
+    output: editedOutput || review.output,
+    reviewStatus
+  });
+
+  pendingReviews.delete(reviewId);
+
+  return NextResponse.json({
+    success: true,
+    reviewId,
+    status,
+    message: `Review ${status} successfully`
+  });
+}
+
+// Check for pending reviews
+function checkPendingReviews() {
+  const pending = Array.from(pendingReviews.entries()).map(([id, review]) => ({
+    reviewId: id,
+    nodeId: review.nodeId,
+    nodeType: review.nodeType,
+    nodeLabel: review.nodeLabel,
+    output: review.output,
+    humanReviewConfig: review.humanReviewConfig,
+    createdAt: review.createdAt
+  }));
+
+  return NextResponse.json({
+    success: true,
+    pendingReviews: pending
+  });
+}
+
 // フロー実行エンジンの簡略化実装
-async function executeFlow(nodes: any[], edges: any[], input: any) {
+async function executeFlow(flowId: string, nodes: any[], edges: any[], input: any) {
   const startTime = Date.now();
   const logs: string[] = [];
   let output = input;
+  let pendingReview = null;
 
   try {
     // ノードの実行順序を決定（トポロジカルソート）
@@ -47,7 +123,33 @@ async function executeFlow(nodes: any[], edges: any[], input: any) {
 
       // ノードタイプに応じた処理を実行
       const nodeOutput = await executeNode(node, output);
-      output = nodeOutput;
+
+      // Check if human review is required
+      if (node.data.humanReview?.enabled) {
+        const reviewResult = await requestHumanReview(
+          flowId,
+          node,
+          nodeOutput,
+          node.data.humanReview
+        );
+
+        if (reviewResult.pendingReview) {
+          // Execution is paused, waiting for review
+          logs.push(`Node ${node.id} is waiting for human review`);
+          pendingReview = reviewResult.pendingReview;
+          break;
+        } else if (!reviewResult.approved) {
+          // Review rejected
+          logs.push(`Node ${node.id} review was rejected`);
+          throw new Error(`Execution stopped: Node ${node.id} review rejected`);
+        } else {
+          // Review approved, use the potentially edited output
+          output = reviewResult.output;
+          logs.push(`Node ${node.id} review approved`);
+        }
+      } else {
+        output = nodeOutput;
+      }
 
       logs.push(`Node ${node.id} completed successfully`);
     }
@@ -59,11 +161,70 @@ async function executeFlow(nodes: any[], edges: any[], input: any) {
       output,
       executionTime,
       logs,
+      pendingReview
     };
   } catch (error) {
     logs.push(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     throw error;
   }
+}
+
+// Request human review for a node output
+async function requestHumanReview(
+  flowId: string,
+  node: any,
+  output: any,
+  humanReviewConfig: HumanReviewConfig
+): Promise<any> {
+  // Generate review ID
+  const reviewId = `${flowId}-${node.id}-${Date.now()}`;
+
+  // Create a promise that will be resolved when the review is complete
+  const reviewPromise = new Promise((resolve) => {
+    const reviewData = {
+      reviewId,
+      flowId,
+      nodeId: node.id,
+      nodeType: node.data.type,
+      nodeLabel: node.data.label,
+      output,
+      humanReviewConfig,
+      createdAt: new Date(),
+      resolve
+    };
+
+    pendingReviews.set(reviewId, reviewData);
+
+    // Set timeout if configured
+    if (humanReviewConfig.timeoutSeconds && humanReviewConfig.timeoutSeconds > 0) {
+      setTimeout(() => {
+        if (pendingReviews.has(reviewId)) {
+          // Auto-approve on timeout
+          resolve({
+            approved: true,
+            output,
+            reviewStatus: {
+              nodeId: node.id,
+              status: 'approved',
+              reviewedAt: new Date(),
+              comments: 'Auto-approved due to timeout'
+            }
+          });
+          pendingReviews.delete(reviewId);
+        }
+      }, humanReviewConfig.timeoutSeconds * 1000);
+    }
+  });
+
+  // For this implementation, we'll return immediately with pending status
+  // In a real implementation, this could use WebSockets or Server-Sent Events
+  return {
+    pendingReview: {
+      reviewId,
+      nodeId: node.id,
+      message: humanReviewConfig.approvalMessage || `Review required for node: ${node.data.label}`
+    }
+  };
 }
 
 // ノードの実行

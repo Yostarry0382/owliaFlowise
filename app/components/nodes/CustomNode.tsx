@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
-import { Box, Paper, Typography, Chip } from '@mui/material';
+import { Box, Paper, Typography, Chip, Badge, Tooltip } from '@mui/material';
 import {
   Psychology,
   Storage,
@@ -14,6 +14,8 @@ import {
   Chat,
   DocumentScanner,
   Functions,
+  Person,
+  CheckCircle,
 } from '@mui/icons-material';
 
 const getNodeIcon = (type: string) => {
@@ -75,6 +77,7 @@ const getNodeColor = (type: string) => {
 export function CustomNode({ data, selected }: NodeProps) {
   const nodeColor = getNodeColor(data.type);
   const nodeIcon = getNodeIcon(data.type);
+  const hasHumanReview = data.humanReview?.enabled || false;
 
   return (
     <>
@@ -98,11 +101,38 @@ export function CustomNode({ data, selected }: NodeProps) {
           borderRadius: 2,
           cursor: 'pointer',
           transition: 'all 0.2s',
+          position: 'relative',
           '&:hover': {
             boxShadow: 4,
           },
         }}
       >
+        {/* Human Review Indicator */}
+        {hasHumanReview && (
+          <Tooltip title="人間による確認が有効">
+            <Box
+              sx={{
+                position: 'absolute',
+                top: -8,
+                right: -8,
+                bgcolor: 'warning.main',
+                color: 'white',
+                borderRadius: '50%',
+                width: 24,
+                height: 24,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: 2,
+                animation: 'pulse 2s infinite',
+                zIndex: 1,
+              }}
+            >
+              <Person sx={{ fontSize: 16 }} />
+            </Box>
+          </Tooltip>
+        )}
+
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
           {nodeIcon}
           <Typography variant="subtitle2" fontWeight="bold">
@@ -133,6 +163,27 @@ export function CustomNode({ data, selected }: NodeProps) {
             variant="outlined"
           />
         )}
+
+        {hasHumanReview && data.humanReview?.allowEdit && (
+          <Box sx={{ display: 'flex', gap: 0.5, mt: 1 }}>
+            <Chip
+              icon={<Person />}
+              label="確認必須"
+              size="small"
+              color="warning"
+              variant="filled"
+              sx={{ fontSize: '0.7rem' }}
+            />
+            {data.humanReview?.timeoutSeconds > 0 && (
+              <Chip
+                label={`${data.humanReview.timeoutSeconds}秒`}
+                size="small"
+                variant="outlined"
+                sx={{ fontSize: '0.7rem' }}
+              />
+            )}
+          </Box>
+        )}
       </Paper>
 
       <Handle
@@ -144,6 +195,19 @@ export function CustomNode({ data, selected }: NodeProps) {
           height: 8,
         }}
       />
+
+      <style jsx global>{`
+        @keyframes pulse {
+          0%, 100% {
+            transform: scale(1);
+            opacity: 1;
+          }
+          50% {
+            transform: scale(1.1);
+            opacity: 0.8;
+          }
+        }
+      `}</style>
     </>
   );
 }

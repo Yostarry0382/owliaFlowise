@@ -68,18 +68,20 @@ app/
 ├── api/
 │   └── flows/          # Flow management API routes
 │       ├── route.ts    # CRUD operations for flows
-│       └── execute/    # Flow execution engine
+│       └── execute/    # Flow execution engine with human review
 │           └── route.ts
 ├── components/          # Reusable UI components
 │   ├── FlowBuilder.tsx  # Main visual flow builder
 │   ├── NodeSidebar.tsx  # Drag-and-drop node palette
-│   ├── NodeConfigPanel.tsx # Node configuration panel
+│   ├── NodeConfigPanel.tsx # Node configuration panel with human review settings
+│   ├── HumanReviewSwitch.tsx # Switch component for human review toggle
+│   ├── HumanReviewModal.tsx # Modal for reviewing/approving node outputs
 │   └── nodes/          # Custom node components
-│       └── CustomNode.tsx
+│       └── CustomNode.tsx # Node component with review indicators
 ├── lib/                # Utility functions and API clients
 │   └── flowise-client.ts
 ├── types/              # TypeScript type definitions
-│   └── flowise.ts
+│   └── flowise.ts      # Includes HumanReviewConfig and ReviewStatus types
 ├── layout.tsx          # Root layout with metadata
 ├── page.tsx            # Main application page
 └── globals.css         # Global styles with Tailwind
@@ -120,6 +122,41 @@ public/                 # Static assets
 9. **Transform Node** - Data manipulation and processing
 10. **Custom Code** - Execute custom JavaScript/Python code
 
+### Human Review Feature (新機能)
+
+各ノードに人間による確認・承認機能を実装。AIの処理結果を人間が確認してから次の工程に進むことができます。
+
+#### 機能概要
+- **ノードごとの確認設定**: 各ノードで個別に人間確認のON/OFFが可能
+- **視覚的インジケーター**: 確認が有効なノードには黄色の人型アイコンを表示
+- **柔軟な承認フロー**: 承認/拒否/編集の3つのアクション
+- **タイムアウト機能**: 指定時間後の自動承認
+- **編集機能**: 出力結果を編集してから承認可能
+
+#### 設定項目
+1. **確認の有効/無効**: スイッチでON/OFF切り替え
+2. **出力編集の許可**: 結果を編集可能にするかの設定
+3. **確認メッセージ**: カスタムメッセージの設定
+4. **自動承認タイムアウト**: 秒単位でのタイムアウト設定（0で無効）
+
+#### 使用方法
+1. ノードをクリックして設定パネルを開く
+2. 「人間による確認設定」セクションを展開
+3. スイッチをONにして機能を有効化
+4. 必要に応じてオプションを設定
+5. フロー実行時、該当ノードで処理が一時停止
+6. レビューモーダルで承認/拒否/編集を実行
+
+#### 関連コンポーネント
+- `HumanReviewSwitch.tsx`: 確認機能のON/OFFスイッチ
+- `HumanReviewModal.tsx`: レビュー用モーダルダイアログ
+- `NodeConfigPanel.tsx`: ノード設定パネル（確認設定含む）
+- `CustomNode.tsx`: ノードコンポーネント（視覚的インジケーター付き）
+
+#### APIエンドポイント
+- レビュー待機中の確認: `POST /api/flows/execute` with `action: 'check-pending'`
+- レビュー決定の送信: `POST /api/flows/execute` with `action: 'review'`
+
 ### API Endpoints
 
 #### Flow Management
@@ -131,7 +168,16 @@ public/                 # Static assets
 #### Flow Execution
 - `POST /api/flows/execute` - Execute a flow with input data
   - Request: `{ flowId: string, nodes: Node[], edges: Edge[], input: any }`
-  - Response: `{ success: boolean, output: any, executionTime: number, logs: string[] }`
+  - Response: `{ success: boolean, output: any, executionTime: number, logs: string[], pendingReview?: object }`
+
+#### Human Review Management
+- `POST /api/flows/execute` with `action: 'review'` - Submit review decision
+  - Request: `{ action: 'review', reviewId: string, reviewData: { status: string, editedOutput?: any, comments?: string } }`
+  - Response: `{ success: boolean, reviewId: string, status: string, message: string }`
+
+- `POST /api/flows/execute` with `action: 'check-pending'` - Check pending reviews
+  - Request: `{ action: 'check-pending' }`
+  - Response: `{ success: boolean, pendingReviews: ReviewStatus[] }`
 
 ### Required Environment Variables
 

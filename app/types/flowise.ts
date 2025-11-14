@@ -30,3 +30,31 @@ export interface ChatSession {
   createdAt: Date;
   updatedAt: Date;
 }
+
+// Human Review Configuration
+export interface HumanReviewConfig {
+  enabled: boolean;
+  requiresApproval: boolean;
+  approvalMessage?: string;
+  timeoutSeconds?: number;
+  allowEdit?: boolean;
+}
+
+// Node configuration with review settings
+export interface NodeConfig {
+  id: string;
+  type: string;
+  data: any;
+  humanReview?: HumanReviewConfig;
+}
+
+// Review status for execution
+export interface ReviewStatus {
+  nodeId: string;
+  status: 'pending' | 'approved' | 'rejected' | 'edited';
+  reviewedAt?: Date;
+  reviewedBy?: string;
+  originalOutput?: any;
+  editedOutput?: any;
+  comments?: string;
+}

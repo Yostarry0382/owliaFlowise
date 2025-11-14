@@ -16,9 +16,13 @@ import {
   Divider,
   Switch,
   FormControlLabel,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from '@mui/material';
-import { Close, Save } from '@mui/icons-material';
+import { Close, Save, ExpandMore } from '@mui/icons-material';
 import { Node } from 'reactflow';
+import HumanReviewSwitch from './HumanReviewSwitch';
 
 interface NodeConfigPanelProps {
   node: Node;
@@ -28,6 +32,16 @@ interface NodeConfigPanelProps {
 
 export default function NodeConfigPanel({ node, onClose, onUpdate }: NodeConfigPanelProps) {
   const [config, setConfig] = useState(node.data.config || {});
+  const [humanReviewConfig, setHumanReviewConfig] = useState(
+    node.data.humanReview || {
+      enabled: false,
+      requiresApproval: true,
+      allowEdit: true,
+      timeoutSeconds: 0,
+      approvalMessage: ''
+    }
+  );
+  const [reviewAccordionExpanded, setReviewAccordionExpanded] = useState(true);
 
   const handleConfigChange = (key: string, value: any) => {
     setConfig((prev: any) => ({
@@ -37,7 +51,17 @@ export default function NodeConfigPanel({ node, onClose, onUpdate }: NodeConfigP
   };
 
   const handleSave = () => {
-    onUpdate(config);
+    onUpdate({
+      ...config,
+      humanReview: humanReviewConfig
+    });
+  };
+
+  const handleHumanReviewChange = (key: string, value: any) => {
+    setHumanReviewConfig((prev: any) => ({
+      ...prev,
+      [key]: value,
+    }));
   };
 
   const renderConfigFields = () => {
@@ -371,6 +395,66 @@ export default function NodeConfigPanel({ node, onClose, onUpdate }: NodeConfigP
         </Typography>
 
         {renderConfigFields()}
+
+        <Divider sx={{ my: 2 }} />
+
+        {/* Human Review Settings */}
+        <Accordion
+          expanded={reviewAccordionExpanded}
+          onChange={(e, isExpanded) => setReviewAccordionExpanded(isExpanded)}
+        >
+          <AccordionSummary expandIcon={<ExpandMore />}>
+            <Typography variant="subtitle2">人間による確認設定</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Box>
+              <HumanReviewSwitch
+                enabled={humanReviewConfig.enabled}
+                onChange={(enabled) => handleHumanReviewChange('enabled', enabled)}
+                label="このノードで人間の確認を要求"
+                helperText="実行を一時停止し、出力を承認または拒否できるようにします"
+              />
+
+              {humanReviewConfig.enabled && (
+                <>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={humanReviewConfig.allowEdit}
+                        onChange={(e) => handleHumanReviewChange('allowEdit', e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label="出力の編集を許可"
+                    sx={{ mt: 1, mb: 2 }}
+                  />
+
+                  <TextField
+                    fullWidth
+                    label="確認メッセージ (オプション)"
+                    value={humanReviewConfig.approvalMessage || ''}
+                    onChange={(e) => handleHumanReviewChange('approvalMessage', e.target.value)}
+                    placeholder="例: この結果で処理を続行しますか？"
+                    multiline
+                    rows={2}
+                    sx={{ mb: 2 }}
+                  />
+
+                  <TextField
+                    fullWidth
+                    label="自動承認タイムアウト (秒)"
+                    type="number"
+                    value={humanReviewConfig.timeoutSeconds || 0}
+                    onChange={(e) => handleHumanReviewChange('timeoutSeconds', parseInt(e.target.value) || 0)}
+                    helperText="0の場合はタイムアウトなし"
+                    inputProps={{ min: 0, max: 3600 }}
+                    sx={{ mb: 2 }}
+                  />
+                </>
+              )}
+            </Box>
+          </AccordionDetails>
+        </Accordion>
       </Box>
 
       <Box sx={{ mt: 'auto', p: 2, borderTop: 1, borderColor: 'divider' }}>
