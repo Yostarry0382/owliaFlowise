@@ -6,7 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Current Status**: Active development - OwliaFabrica Visual AI Agent Builder
 
-This project is a visual AI agent builder inspired by Flowise, providing a drag-and-drop interface for creating complex AI workflows and multi-agent systems using React Flow and Next.js. Features include single-agent flow building, multi-agent orchestration, and human-in-the-loop review capabilities.
+This project is a visual AI agent builder inspired by Flowise, providing a drag-and-drop interface for creating complex AI workflows and multi-agent systems using React Flow and Next.js. Features include single-agent flow building, multi-agent orchestration, human-in-the-loop review capabilities, and a PowerPro-style agent marketplace.
+
+### Recent Updates (2025-11-17)
+- **Agent Store**: PowerPro野球風のカードデザインでエージェントを表示するマーケットプレイス機能を追加
+- **SavedOwlsList**: 保存済みOwlAgentの管理・編集機能を実装
+- **Navigation Hub**: メインページを統合ナビゲーションハブとして再設計
+- **Dynamic Routing**: agent-canvas/[id]による個別エージェント編集ルートの実装
 
 ## Technology Stack
 
@@ -77,6 +83,7 @@ app/
 │   │   └── execute/    # Multi-agent execution engine
 │   │       └── route.ts
 │   └── owlagents/      # OwlAgent management
+│       ├── route.ts    # List and create OwlAgents
 │       └── [id]/       # Dynamic route for agent operations
 │           └── route.ts
 ├── components/          # Reusable UI components
@@ -86,22 +93,29 @@ app/
 │   ├── HumanReviewSwitch.tsx # Switch component for human review toggle
 │   ├── HumanReviewModal.tsx # Modal for reviewing/approving node outputs
 │   ├── MultiAgentCanvas.tsx # Multi-agent visual canvas
+│   ├── SavedOwlsList.tsx # Component for displaying saved OwlAgents
 │   ├── multi-agent/    # Multi-agent specific components
 │   │   ├── OwlAgentNode.tsx # Custom node for OwlAgent
 │   │   └── AgentSidebar.tsx # Sidebar for agent selection
+│   ├── store/          # Agent store components
+│   │   └── AgentStoreCard.tsx # PowerPro-style agent card display
 │   └── nodes/          # Custom node components
 │       └── CustomNode.tsx # Node component with review indicators
 ├── multi-agent/        # Multi-agent canvas page
 │   └── page.tsx        # Multi-agent flow builder interface
 ├── agent-canvas/       # Individual agent canvas
-│   └── page.tsx        # Single agent flow builder
+│   ├── page.tsx        # Single agent flow builder (list view)
+│   └── [id]/           # Dynamic route for specific agent canvas
+│       └── page.tsx    # Agent editor canvas
+├── store/              # Agent store page
+│   └── page.tsx        # Agent marketplace interface
 ├── lib/                # Utility functions and API clients
 │   └── flowise-client.ts
 ├── types/              # TypeScript type definitions
 │   ├── flowise.ts      # Includes HumanReviewConfig and ReviewStatus types
 │   └── multi-agent.ts  # Multi-agent system type definitions
 ├── layout.tsx          # Root layout with metadata
-├── page.tsx            # Main application page
+├── page.tsx            # Main application page with navigation hub
 └── globals.css         # Global styles with Tailwind
 
 public/                 # Static assets
@@ -176,6 +190,63 @@ data/
 #### APIエンドポイント
 - レビュー待機中の確認: `POST /api/flows/execute` with `action: 'check-pending'`
 - レビュー決定の送信: `POST /api/flows/execute` with `action: 'review'`
+
+### OwlAgent Store (新機能)
+
+エージェントマーケットプレイスで、パワプロ風のカード表示でOwlAgentを管理・選択できるシステム。
+
+#### Store機能概要
+- **PowerPro風カードデザイン**: パワプロ野球ゲーム風の能力値表示とランクシステム
+- **能力値システム**: S〜Fランクによる5つの主要能力評価
+- **タグシステム**: エージェントの特徴を視覚的にグリッド表示
+- **プレビュー機能**: React Flowを使用したフロー構成の可視化
+- **リアルタイム統計**: 実行回数、いいね数などの使用統計
+
+#### 能力値ランクシステム
+```typescript
+type AbilityRank = 'S' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+
+// 能力値の定義
+- Popularity (人気度): エージェントの使用頻度
+- Like (好感度): ユーザー評価
+- Reliability (安定性): 実行の安定性
+- Speed (応答速度): 処理速度
+- CostEfficiency (コスパ): コスト効率
+```
+
+#### 関連コンポーネント
+- `app/store/page.tsx`: Storeページのエントリーポイント
+- `app/components/store/AgentStoreCard.tsx`: PowerPro風カード表示コンポーネント
+- 能力値の視覚化（グラデーション背景、ランク別カラーコード）
+- 24スロットのタググリッド（色分けされた4つのカテゴリ）
+
+### SavedOwlsList (新機能)
+
+保存済みのOwlAgentを管理・編集するための一覧表示コンポーネント。
+
+#### SavedOwlsList機能概要
+- **OwlAgent一覧表示**: 保存済みエージェントのリスト表示
+- **詳細カード表示**: PowerPro風のカードデザインで詳細情報表示
+- **フロー編集機能**: 各エージェントのフロー編集画面への遷移
+- **削除機能**: 不要なエージェントの削除
+- **プレビュー機能**: フローの視覚的確認
+
+#### 管理機能
+1. **CRUD操作**
+   - Create: 新規エージェント作成（agent-canvas経由）
+   - Read: 保存済みエージェントの表示
+   - Update: フロー編集画面への遷移
+   - Delete: エージェントの削除（確認ダイアログ付き）
+
+2. **API連携**
+   - `GET /api/owlagents`: エージェント一覧取得
+   - `DELETE /api/owlagents?id={id}`: エージェント削除
+   - 自動的な能力値生成とランク付け
+
+#### 関連コンポーネント
+- `app/components/SavedOwlsList.tsx`: 保存済みOwlAgent管理コンポーネント
+- `app/agent-canvas/page.tsx`: エージェント一覧ページ
+- `app/agent-canvas/[id]/page.tsx`: 個別エージェント編集ページ
 
 ### Multi-Agent System (新機能)
 
@@ -299,6 +370,25 @@ interface MultiAgentExecutionContext {
   - Query params: `?executionId={executionId}`
   - Response: `MultiAgentExecutionContext` with current execution state
 
+#### OwlAgent Management
+- `GET /api/owlagents` - List all saved OwlAgents
+  - Response: Array of OwlAgent objects with metadata
+
+- `GET /api/owlagents/[id]` - Get specific OwlAgent by ID
+  - Response: Single OwlAgent object with full flow data
+
+- `POST /api/owlagents` - Create new OwlAgent
+  - Request: `{ name: string, description: string, flow: { nodes: Node[], edges: Edge[] }, tags?: string[], icon?: string }`
+  - Response: Created OwlAgent with generated ID
+
+- `PUT /api/owlagents/[id]` - Update existing OwlAgent
+  - Request: Updated OwlAgent data
+  - Response: Updated OwlAgent object
+
+- `DELETE /api/owlagents?id={id}` - Delete OwlAgent
+  - Query params: `?id={agentId}`
+  - Response: `{ message: string }`
+
 ### Required Environment Variables
 
 ```env
@@ -399,6 +489,8 @@ Consider containerization for:
 - Basic error handling in flow execution
 - Authentication not yet implemented
 - No parallel agent execution in multi-agent flows
+- Agent Store uses mock data (needs real marketplace backend)
+- PowerPro card abilities are randomly generated (needs real metrics)
 
 ### Planned Features
 
@@ -446,6 +538,18 @@ Consider containerization for:
    - Agent result caching
    - Agent marketplace/library
    - Multi-agent debugging tools
+
+7. **Agent Store Enhancements**
+   - Real marketplace backend integration
+   - User rating and review system
+   - Agent performance metrics tracking
+   - Download and usage statistics
+   - Agent versioning and updates
+   - Community contributed agents
+   - Agent certification/verification
+   - Premium agent monetization
+   - Agent recommendation system
+   - Advanced search and filtering
 
 ## Contributing Guidelines
 

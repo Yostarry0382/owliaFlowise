@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import React, { useCallback, useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import ReactFlow, {
   addEdge,
   Background,
@@ -30,10 +30,9 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  CircularProgress,
+  TextField,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import HomeIcon from '@mui/icons-material/Home';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import NodeSidebar from '@/app/components/NodeSidebar';
@@ -45,54 +44,16 @@ const nodeTypes: NodeTypes = {
   custom: CustomNode,
 };
 
-export default function AgentCanvasPage() {
-  const params = useParams();
+export default function NewAgentCanvasPage() {
   const router = useRouter();
-  const agentId = params.id as string;
-
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
-  const [agent, setAgent] = useState<OwlAgent | null>(null);
-  const [loading, setLoading] = useState(true);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
-
-  // エージェント情報とフローを取得
-  useEffect(() => {
-    const fetchAgent = async () => {
-      try {
-        const response = await fetch(`/api/owlagents?id=${agentId}`);
-        if (response.ok) {
-          const agentData: OwlAgent = await response.json();
-          setAgent(agentData);
-
-          // フロー定義があれば読み込む
-          if (agentData.flow) {
-            if (agentData.flow.nodes) {
-              setNodes(agentData.flow.nodes);
-            }
-            if (agentData.flow.edges) {
-              setEdges(agentData.flow.edges);
-            }
-          }
-        } else {
-          console.error('Failed to fetch agent');
-          router.push('/');
-        }
-      } catch (error) {
-        console.error('Error fetching agent:', error);
-        router.push('/');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (agentId) {
-      fetchAgent();
-    }
-  }, [agentId, router, setNodes, setEdges]);
+  const [agentName, setAgentName] = useState('');
+  const [agentDescription, setAgentDescription] = useState('');
 
   // ノード接続時の処理
   const onConnect = useCallback(
@@ -149,35 +110,47 @@ export default function AgentCanvasPage() {
     [reactFlowInstance, setNodes]
   );
 
-  // フロー保存
+  // フロー保存（新規OwlAgent作成）
   const handleSaveFlow = async () => {
-    if (!agent) return;
+    if (!agentName) {
+      alert('エージェント名を入力してください');
+      return;
+    }
 
-    const updatedAgent: OwlAgent = {
-      ...agent,
+    const newAgent: OwlAgent = {
+      id: `agent_${Date.now()}`,
+      name: agentName,
+      description: agentDescription || 'OwlAgent created from canvas',
+      icon: '🦉',
+      tags: ['Custom', 'Canvas'],
+      capabilities: ['flow-execution'],
       flow: {
         nodes,
         edges,
       },
-      updatedAt: new Date().toISOString(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
     try {
       const response = await fetch('/api/owlagents', {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedAgent),
+        body: JSON.stringify(newAgent),
       });
 
       if (response.ok) {
+        const savedAgent = await response.json();
         setSaveDialogOpen(false);
-        alert('フローを保存しました！');
+        alert('新しいOwlAgentを作成しました！');
+        // 作成したエージェントの編集ページへ遷移
+        router.push(`/agent-canvas/${savedAgent.id}`);
       } else {
-        alert('フローの保存に失敗しました');
+        alert('OwlAgentの作成に失敗しました');
       }
     } catch (error) {
-      console.error('Failed to save flow:', error);
-      alert('フローの保存に失敗しました');
+      console.error('Failed to save agent:', error);
+      alert('OwlAgentの作成に失敗しました');
     }
   };
 
@@ -199,14 +172,6 @@ export default function AgentCanvasPage() {
     );
   }, [setNodes]);
 
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#0A0A0A' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
   return (
     <Box sx={{ display: 'flex', height: '100vh', backgroundColor: '#0A0A0A' }}>
       {/* ノードパレット */}
@@ -220,7 +185,7 @@ export default function AgentCanvasPage() {
             <IconButton
               edge="start"
               color="inherit"
-              onClick={() => router.push('/')}
+              onClick={() => router.push('/multi-agent')}
               sx={{ mr: 2 }}
             >
               <ArrowBackIcon />
@@ -229,41 +194,13 @@ export default function AgentCanvasPage() {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <span style={{ fontSize: '1.5em' }}>🦉</span>
               <Typography variant="h6">
-                {agent?.name || 'エージェントキャンバス'}
+                新規エージェントキャンバス
               </Typography>
             </Box>
 
             <Box sx={{ flexGrow: 1 }} />
 
-            <Tooltip title="テスト実行">
-              <IconButton color="inherit" onClick={async () => {
-                try {
-                  const response = await fetch('/api/flows/execute', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      flowId: agentId,
-                      nodes: nodes || [],
-                      edges: edges || [],
-                      input: { test: true },
-                    }),
-                  });
-                  const result = await response.json();
-                  if (result.success) {
-                    alert(`テスト実行成功\n\n出力: ${JSON.stringify(result.output, null, 2)}`);
-                  } else {
-                    alert(`テスト実行失敗\n\nエラー: ${result.error}`);
-                  }
-                } catch (error) {
-                  console.error('Test execution error:', error);
-                  alert('テスト実行中にエラーが発生しました');
-                }
-              }}>
-                <PlayArrowIcon />
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title="フローを保存">
+            <Tooltip title="OwlAgentとして保存">
               <IconButton color="inherit" onClick={() => setSaveDialogOpen(true)}>
                 <SaveIcon />
               </IconButton>
@@ -322,10 +259,13 @@ export default function AgentCanvasPage() {
                   }}
                 >
                   <Typography variant="h4" sx={{ color: '#666', mb: 2 }}>
-                    ノードをドラッグして配置
+                    新規エージェントを作成
                   </Typography>
                   <Typography variant="body1" sx={{ color: '#555' }}>
-                    左側のサイドバーからノードをドラッグ＆ドロップしてください
+                    左側のサイドバーからノードをドラッグ＆ドロップして、
+                  </Typography>
+                  <Typography variant="body1" sx={{ color: '#555' }}>
+                    AIエージェントのワークフローを構築しましょう
                   </Typography>
                 </Box>
               )}
@@ -356,23 +296,54 @@ export default function AgentCanvasPage() {
           },
         }}
       >
-        <DialogTitle>フローを保存</DialogTitle>
+        <DialogTitle>新規OwlAgentを作成</DialogTitle>
         <DialogContent>
-          <Typography variant="body1">
-            {agent?.name} のフローを保存しますか？
-          </Typography>
-          {agent?.description && (
-            <Typography variant="body2" sx={{ color: '#B0B0B0', mt: 1 }}>
-              {agent.description}
-            </Typography>
-          )}
+          <TextField
+            fullWidth
+            label="エージェント名"
+            value={agentName}
+            onChange={(e) => setAgentName(e.target.value)}
+            sx={{
+              mt: 2,
+              mb: 2,
+              '& .MuiInputLabel-root': { color: '#999' },
+              '& .MuiOutlinedInput-root': {
+                color: '#E0E0E0',
+                '& fieldset': { borderColor: '#555' },
+                '&:hover fieldset': { borderColor: '#777' },
+                '&.Mui-focused fieldset': { borderColor: '#90CAF9' },
+              },
+            }}
+          />
+          <TextField
+            fullWidth
+            label="説明（オプション）"
+            value={agentDescription}
+            onChange={(e) => setAgentDescription(e.target.value)}
+            multiline
+            rows={3}
+            sx={{
+              '& .MuiInputLabel-root': { color: '#999' },
+              '& .MuiOutlinedInput-root': {
+                color: '#E0E0E0',
+                '& fieldset': { borderColor: '#555' },
+                '&:hover fieldset': { borderColor: '#777' },
+                '&.Mui-focused fieldset': { borderColor: '#90CAF9' },
+              },
+            }}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSaveDialogOpen(false)} sx={{ color: '#999' }}>
             キャンセル
           </Button>
-          <Button onClick={handleSaveFlow} variant="contained" sx={{ backgroundColor: '#90CAF9', color: '#000' }}>
-            保存
+          <Button
+            onClick={handleSaveFlow}
+            variant="contained"
+            sx={{ backgroundColor: '#90CAF9', color: '#000' }}
+            disabled={!agentName}
+          >
+            作成
           </Button>
         </DialogActions>
       </Dialog>
