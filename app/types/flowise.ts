@@ -58,3 +58,30 @@ export interface ReviewStatus {
   editedOutput?: any;
   comments?: string;
 }
+
+// Flow definition for saving
+export interface FlowDefinition {
+  nodes: any[];
+  edges: any[];
+  viewport?: {
+    x: number;
+    y: number;
+    zoom: number;
+  };
+}
+
+// OwlAgent (packaged flow) definition
+export interface OwlAgent {
+  id: string;
+  name: string;
+  description: string;
+  iconStyle: 'default' | 'red' | 'blue' | 'green' | 'purple' | 'orange';
+  inputSchema?: any;  // JSON Schema format (initially any)
+  outputSchema?: any; // JSON Schema format (initially any)
+  version: string;    // e.g., '1.0.0'
+  flow: FlowDefinition;
+  createdAt?: Date;
+  updatedAt?: Date;
+  author?: string;
+  tags?: string[];
+}

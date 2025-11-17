@@ -1,0 +1,63 @@
+{
+  "id": "69a43364-3dbd-4143-84a7-91a959a9f86d",
+  "name": "デモ１ (Copy)",
+  "description": "デモ１",
+  "iconStyle": "blue",
+  "version": "1.0.0",
+  "flow": {
+    "nodes": [
+      {
+        "id": "1",
+        "type": "custom",
+        "position": {
+          "x": 250,
+          "y": 100
+        },
+        "data": {
+          "label": "LLMチェーンノード",
+          "type": "llm",
+          "config": {}
+        },
+        "width": 186,
+        "height": 63
+      },
+      {
+        "id": "1763341778815",
+        "type": "custom",
+        "position": {
+          "x": 302,
+          "y": -6.166667938232422
+        },
+        "data": {
+          "label": "チェーンノード",
+          "type": "chain",
+          "config": {}
+        },
+        "width": 180,
+        "height": 66,
+        "selected": true,
+        "positionAbsolute": {
+          "x": 302,
+          "y": -6.166667938232422
+        },
+        "dragging": false
+      }
+    ],
+    "edges": [
+      {
+        "source": "1763341778815",
+        "sourceHandle": null,
+        "target": "1",
+        "targetHandle": null,
+        "id": "reactflow__edge-1763341778815-1"
+      }
+    ],
+    "viewport": {
+      "x": -312,
+      "y": 62,
+      "zoom": 2
+    }
+  },
+  "createdAt": "2025-11-17T01:10:25.513Z",
+  "updatedAt": "2025-11-17T01:10:25.513Z"
+}

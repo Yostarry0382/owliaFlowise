@@ -16,10 +16,13 @@ import ReactFlow, {
   ReactFlowProvider,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Box, Paper, Typography } from '@mui/material';
+import { Box, Paper, Typography, Button, IconButton, Tooltip } from '@mui/material';
+import SaveIcon from '@mui/icons-material/Save';
 import NodeSidebar from './NodeSidebar';
 import NodeConfigPanel from './NodeConfigPanel';
 import { CustomNode } from './nodes/CustomNode';
+import SaveAsOwlModal from './SaveAsOwlModal';
+import { OwlAgent, FlowDefinition } from '@/app/types/flowise';
 
 const nodeTypes: NodeTypes = {
   custom: CustomNode,
@@ -45,6 +48,7 @@ function FlowBuilder() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
 
   const onConnect = useCallback(
     (params: Edge | Connection) => setEdges((eds) => addEdge(params, eds)),
@@ -118,6 +122,38 @@ function FlowBuilder() {
     [setNodes]
   );
 
+  const handleSaveAsOwl = async (owlAgent: Omit<OwlAgent, 'id' | 'createdAt' | 'updatedAt'>) => {
+    try {
+      const response = await fetch('/api/owlagents', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(owlAgent),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save Owl Agent');
+      }
+
+      const savedOwl = await response.json();
+      console.log('Owl Agent saved successfully:', savedOwl);
+      // TODO: Show success notification
+    } catch (error) {
+      console.error('Error saving Owl Agent:', error);
+      // TODO: Show error notification
+    }
+  };
+
+  const getCurrentFlow = (): FlowDefinition => {
+    const viewport = reactFlowInstance?.getViewport() || { x: 0, y: 0, zoom: 1 };
+    return {
+      nodes,
+      edges,
+      viewport,
+    };
+  };
+
   return (
     <Box sx={{ display: 'flex', height: '100vh', bgcolor: '#f5f5f5' }}>
       {/* サイドバー */}
@@ -150,6 +186,27 @@ function FlowBuilder() {
               </Typography>
             </Paper>
           </Panel>
+
+          <Panel position="top-right">
+            <Paper sx={{ p: 1, m: 2 }}>
+              <Tooltip title="Save as Owl Agent">
+                <Button
+                  variant="contained"
+                  startIcon={<SaveIcon />}
+                  onClick={() => setSaveModalOpen(true)}
+                  sx={{
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: 'white',
+                    '&:hover': {
+                      background: 'linear-gradient(135deg, #5a67d8 0%, #6b4199 100%)',
+                    },
+                  }}
+                >
+                  フクロウとして保存
+                </Button>
+              </Tooltip>
+            </Paper>
+          </Panel>
         </ReactFlow>
       </Box>
 
@@ -161,6 +218,14 @@ function FlowBuilder() {
           onUpdate={(config) => updateNodeConfig(selectedNode.id, config)}
         />
       )}
+
+      {/* Save as Owl Modal */}
+      <SaveAsOwlModal
+        open={saveModalOpen}
+        onClose={() => setSaveModalOpen(false)}
+        onSave={handleSaveAsOwl}
+        flow={getCurrentFlow()}
+      />
     </Box>
   );
 }
