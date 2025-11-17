@@ -331,8 +331,8 @@ function topologicalSort(nodes: any[], edges: any[]) {
   });
 
   // ソート実行
-  const sorted = [];
-  const queue = [];
+  const sorted: any[] = [];
+  const queue: any[] = [];
 
   nodes.forEach(node => {
     if (inDegree.get(node.id) === 0) {

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Current Status**: Active development - OwliaFabrica Visual AI Agent Builder
 
-This project is a visual AI agent builder inspired by Flowise, providing a drag-and-drop interface for creating complex AI workflows and agent systems using React Flow and Next.js.
+This project is a visual AI agent builder inspired by Flowise, providing a drag-and-drop interface for creating complex AI workflows and multi-agent systems using React Flow and Next.js. Features include single-agent flow building, multi-agent orchestration, and human-in-the-loop review capabilities.
 
 ## Technology Stack
 
@@ -28,9 +28,11 @@ The project is now fully configured with the following structure:
 1. **Next.js Application**: Initialized with TypeScript support and App Router
 2. **Visual Flow Builder**: React Flow based drag-and-drop interface for AI workflows
 3. **Node System**: 10+ node types for different AI operations (LLM, Vector Store, Memory, etc.)
-4. **API Routes**: Flow management and execution endpoints
-5. **Environment Configuration**: Uses `.env.local` for sensitive configuration
-6. **Development Server**: Runs on `http://localhost:3000` or `3001` if port is in use
+4. **Multi-Agent System**: Visual canvas for connecting multiple OwlAgents into complex workflows
+5. **API Routes**: Flow management, execution, and multi-agent orchestration endpoints
+6. **OwlAgent Storage**: JSON-based storage for individual AI agents in `data/owlagents/`
+7. **Environment Configuration**: Uses `.env.local` for sensitive configuration
+8. **Development Server**: Runs on `http://localhost:3000` or `3001` if port is in use
 
 ## Development Workflow
 
@@ -66,9 +68,16 @@ npm run start
 ```
 app/
 ├── api/
-│   └── flows/          # Flow management API routes
-│       ├── route.ts    # CRUD operations for flows
-│       └── execute/    # Flow execution engine with human review
+│   ├── flows/          # Flow management API routes
+│   │   ├── route.ts    # CRUD operations for flows
+│   │   └── execute/    # Flow execution engine with human review
+│   │       └── route.ts
+│   ├── multi-agent-flows/  # Multi-agent flow management
+│   │   ├── route.ts    # CRUD operations for multi-agent flows
+│   │   └── execute/    # Multi-agent execution engine
+│   │       └── route.ts
+│   └── owlagents/      # OwlAgent management
+│       └── [id]/       # Dynamic route for agent operations
 │           └── route.ts
 ├── components/          # Reusable UI components
 │   ├── FlowBuilder.tsx  # Main visual flow builder
@@ -76,17 +85,28 @@ app/
 │   ├── NodeConfigPanel.tsx # Node configuration panel with human review settings
 │   ├── HumanReviewSwitch.tsx # Switch component for human review toggle
 │   ├── HumanReviewModal.tsx # Modal for reviewing/approving node outputs
+│   ├── MultiAgentCanvas.tsx # Multi-agent visual canvas
+│   ├── multi-agent/    # Multi-agent specific components
+│   │   ├── OwlAgentNode.tsx # Custom node for OwlAgent
+│   │   └── AgentSidebar.tsx # Sidebar for agent selection
 │   └── nodes/          # Custom node components
 │       └── CustomNode.tsx # Node component with review indicators
+├── multi-agent/        # Multi-agent canvas page
+│   └── page.tsx        # Multi-agent flow builder interface
+├── agent-canvas/       # Individual agent canvas
+│   └── page.tsx        # Single agent flow builder
 ├── lib/                # Utility functions and API clients
 │   └── flowise-client.ts
 ├── types/              # TypeScript type definitions
-│   └── flowise.ts      # Includes HumanReviewConfig and ReviewStatus types
+│   ├── flowise.ts      # Includes HumanReviewConfig and ReviewStatus types
+│   └── multi-agent.ts  # Multi-agent system type definitions
 ├── layout.tsx          # Root layout with metadata
 ├── page.tsx            # Main application page
 └── globals.css         # Global styles with Tailwind
 
 public/                 # Static assets
+data/
+└── owlagents/          # OwlAgent JSON storage
 .env.local             # Environment variables (not in git)
 ```
 
@@ -157,6 +177,75 @@ public/                 # Static assets
 - レビュー待機中の確認: `POST /api/flows/execute` with `action: 'check-pending'`
 - レビュー決定の送信: `POST /api/flows/execute` with `action: 'review'`
 
+### Multi-Agent System (新機能)
+
+複数のOwlAgentを視覚的に配置・接続し、高度なマルチエージェントワークフローを構築できるシステム。
+
+#### システム概要
+- **Multi-Agent Canvas**: 複数のエージェントを視覚的に配置・接続できるキャンバス
+- **OwlAgent References**: 既存のOwlAgentへの参照をノードとして配置
+- **エージェント間通信**: エージェント同士でデータをやり取り
+- **トポロジカル実行**: 依存関係を解決した順次実行
+- **実行状態管理**: 各エージェントの状態をリアルタイムで可視化
+
+#### Multi-Agent Canvas機能
+1. **ドラッグ&ドロップ配置**: サイドバーからエージェントをキャンバスに配置
+2. **視覚的接続**: エージェント間をエッジで接続してデータフローを定義
+3. **状態表示**: 実行中・成功・エラーをカラーコーディングで表示
+4. **MiniMap**: 大規模フローの全体像を俯瞰
+5. **フロー保存**: 作成したマルチエージェントフローを保存・再利用
+
+#### エージェント実行フロー
+1. **トポロジカルソート**: エッジの依存関係を解析して実行順序を決定
+2. **順次実行**: 決定された順序でエージェントを実行
+3. **データパイプライン**: 前のエージェントの出力を次のエージェントの入力に渡す
+4. **メッセージ記録**: エージェント間のデータ転送を全て記録
+5. **エラーハンドリング**: エージェントごとにエラーを捕捉して記録
+
+#### 型定義 (app/types/multi-agent.ts)
+```typescript
+// OwlAgentへの参照ノード
+interface OwlAgentRefNode {
+  id: string;
+  agentId: string;
+  agentName?: string;
+  agentDescription?: string;
+  position: { x: number; y: number };
+}
+
+// マルチエージェントフロー
+interface MultiAgentFlow {
+  id: string;
+  name: string;
+  description: string;
+  agents: OwlAgentRefNode[];
+  edges: OwlAgentEdge[];
+}
+
+// 実行コンテキスト
+interface MultiAgentExecutionContext {
+  flowId: string;
+  executionId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  agents: { [agentId: string]: AgentStatus };
+  messages: AgentMessage[];
+}
+```
+
+#### 関連コンポーネント
+- `MultiAgentCanvas.tsx`: メインキャンバスコンポーネント
+- `OwlAgentNode.tsx`: エージェントノードの視覚表現
+- `AgentSidebar.tsx`: エージェント選択サイドバー
+- `/multi-agent/page.tsx`: マルチエージェントビルダーページ
+
+#### 使用方法
+1. `/multi-agent` ページにアクセス
+2. サイドバーから使用したいOwlAgentを選択
+3. キャンバスにドラッグ&ドロップで配置
+4. エージェント間をドラッグして接続
+5. フロー名と説明を設定して保存
+6. 実行ボタンでフローを実行
+
 ### API Endpoints
 
 #### Flow Management
@@ -178,6 +267,37 @@ public/                 # Static assets
 - `POST /api/flows/execute` with `action: 'check-pending'` - Check pending reviews
   - Request: `{ action: 'check-pending' }`
   - Response: `{ success: boolean, pendingReviews: ReviewStatus[] }`
+
+#### Multi-Agent Flow Management
+- `GET /api/multi-agent-flows` - List all multi-agent flows or get specific flow
+  - Query params: `?id={flowId}` for specific flow
+  - Response: `{ flows: MultiAgentFlow[] }` or single `MultiAgentFlow`
+
+- `POST /api/multi-agent-flows` - Create new multi-agent flow
+  - Request: `{ name: string, description: string, agents: OwlAgentRefNode[], edges: OwlAgentEdge[] }`
+  - Response: `MultiAgentFlow` with generated ID and timestamps
+
+- `PUT /api/multi-agent-flows` - Update existing multi-agent flow
+  - Request: `{ id: string, name: string, description: string, agents: OwlAgentRefNode[], edges: OwlAgentEdge[] }`
+  - Response: Updated `MultiAgentFlow`
+
+- `DELETE /api/multi-agent-flows` - Delete multi-agent flow
+  - Query params: `?id={flowId}`
+  - Response: `{ message: string }`
+
+#### Multi-Agent Flow Execution
+- `POST /api/multi-agent-flows/execute` - Execute a multi-agent flow
+  - Request: `{ flowId: string, nodes: Node[], edges: Edge[], input?: any }`
+  - Response: `{ success: boolean, executionId: string, results: any[], context: MultiAgentExecutionContext }`
+  - Features:
+    - Topological sorting for execution order
+    - Sequential agent execution with data pipeline
+    - Message logging between agents
+    - Per-agent status tracking
+
+- `GET /api/multi-agent-flows/execute` - Get execution status
+  - Query params: `?executionId={executionId}`
+  - Response: `MultiAgentExecutionContext` with current execution state
 
 ### Required Environment Variables
 
@@ -271,10 +391,14 @@ Consider containerization for:
 ### Current Limitations
 
 - Flow persistence is in-memory only (needs database integration)
+- Multi-agent flow persistence is in-memory only
+- OwlAgent data stored in JSON files (needs database migration)
 - Limited LLM node execution (mock implementation)
+- Multi-agent execution uses mock agent processing
 - No real-time collaboration features
 - Basic error handling in flow execution
 - Authentication not yet implemented
+- No parallel agent execution in multi-agent flows
 
 ### Planned Features
 
@@ -310,6 +434,18 @@ Consider containerization for:
    - Lazy loading for large flows
    - WebSocket for real-time updates
    - Background job processing
+
+6. **Multi-Agent Enhancements**
+   - Parallel agent execution (when no dependencies)
+   - Real OwlAgent integration (currently using mock execution)
+   - Agent-to-agent streaming communication
+   - Conditional branching in multi-agent flows
+   - Looping and iteration support
+   - Agent health monitoring
+   - Distributed agent execution
+   - Agent result caching
+   - Agent marketplace/library
+   - Multi-agent debugging tools
 
 ## Contributing Guidelines
 
@@ -348,3 +484,15 @@ When adding new features:
    - Ensure browser supports HTML5 drag events
    - Check console for JavaScript errors
    - Verify React Flow is properly initialized
+
+6. **Multi-agent flow execution fails**
+   - Verify all agents exist in the data/owlagents directory
+   - Check for circular dependencies in agent connections
+   - Review execution logs in API response
+   - Ensure topological sort can resolve all dependencies
+
+7. **OwlAgent not appearing in sidebar**
+   - Check data/owlagents directory exists
+   - Verify JSON file format is correct
+   - Ensure agent has required fields (id, name, description)
+   - Restart development server to reload agent list

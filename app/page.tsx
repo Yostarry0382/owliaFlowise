@@ -5,12 +5,17 @@ import dynamic from 'next/dynamic';
 import { Box, Tabs, Tab, Typography, Paper } from '@mui/material';
 import BuildIcon from '@mui/icons-material/Build';
 import FolderIcon from '@mui/icons-material/Folder';
+import GroupWorkIcon from '@mui/icons-material/GroupWork';
 
 const FlowBuilder = dynamic(() => import('./components/FlowBuilder'), {
   ssr: false,
 });
 
 const OwlAgentsList = dynamic(() => import('./components/OwlAgentsList'), {
+  ssr: false,
+});
+
+const MultiAgentCanvas = dynamic(() => import('./components/MultiAgentCanvas'), {
   ssr: false,
 });
 
@@ -73,6 +78,12 @@ export default function Home() {
             iconPosition="start"
             sx={{ minHeight: 64 }}
           />
+          <Tab
+            icon={<GroupWorkIcon />}
+            label="Multi-Agent Canvas"
+            iconPosition="start"
+            sx={{ minHeight: 64 }}
+          />
         </Tabs>
       </Paper>
 
@@ -82,6 +93,9 @@ export default function Home() {
         </TabPanel>
         <TabPanel value={tabValue} index={1}>
           <OwlAgentsList />
+        </TabPanel>
+        <TabPanel value={tabValue} index={2}>
+          <MultiAgentCanvas />
         </TabPanel>
       </Box>
     </Box>
