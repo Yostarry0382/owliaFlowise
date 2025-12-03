@@ -3,6 +3,10 @@ import { OwlAgent } from '@/app/types/flowise';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { FlowiseClient } from '@/app/lib/flowise-client';
+
+// Flowise クライアントの初期化
+const flowiseClient = new FlowiseClient();
 
 // Storage directory for Owl Agents (using file system for now)
 const STORAGE_DIR = path.join(process.cwd(), 'data', 'owlagents');
@@ -128,6 +132,29 @@ export async function POST(request: NextRequest) {
       author: body.author,
       tags: body.tags,
     };
+
+    // Flowise同期オプションが有効な場合
+    if (body.syncToFlowise && body.flowiseChatflowId) {
+      // 既存のFlowiseのChatflow IDを使用
+      owlAgent.flowiseChatflowId = body.flowiseChatflowId;
+    } else if (body.syncToFlowise) {
+      try {
+        const isConnected = await flowiseClient.healthCheck();
+        if (isConnected) {
+          // FlowiseでChatflowを作成（空のフローで作成し、Flowiseで編集）
+          const chatflow = await flowiseClient.createChatflow({
+            name: `OwlAgent: ${body.name}`,
+            flowData: '{"nodes":[],"edges":[]}',
+            deployed: false,
+            category: 'OwliaFabrica',
+          });
+          owlAgent.flowiseChatflowId = chatflow.id;
+        }
+      } catch (syncError) {
+        console.warn('Failed to sync to Flowise:', syncError);
+        // Flowise同期に失敗しても、OwlAgentの作成は続行
+      }
+    }
 
     // Save to file system
     await saveOwlAgent(owlAgent);

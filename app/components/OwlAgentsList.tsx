@@ -6,7 +6,6 @@ import {
   Card,
   CardContent,
   Typography,
-  Grid,
   Chip,
   IconButton,
   Tooltip,
@@ -18,7 +17,6 @@ import {
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import DeleteIcon from '@mui/icons-material/Delete';
-import EditIcon from '@mui/icons-material/Edit';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { OwlAgent } from '@/app/types/flowise';
@@ -180,9 +178,9 @@ export default function OwlAgentsList({ onLoadAgent }: OwlAgentsListProps) {
           </Typography>
         </Box>
       ) : (
-        <Grid container spacing={3}>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
           {filteredAgents.map((agent) => (
-            <Grid item xs={12} sm={6} md={4} key={agent.id}>
+            <Box key={agent.id} sx={{ width: { xs: '100%', sm: 'calc(50% - 12px)', md: 'calc(33.333% - 16px)' } }}>
               <Card
                 sx={{
                   height: '100%',
@@ -292,9 +290,9 @@ export default function OwlAgentsList({ onLoadAgent }: OwlAgentsListProps) {
                   </Box>
                 </CardContent>
               </Card>
-            </Grid>
+            </Box>
           ))}
-        </Grid>
+        </Box>
       )}
     </Box>
   );

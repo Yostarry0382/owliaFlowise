@@ -4,12 +4,12 @@ import { v4 as uuidv4 } from 'uuid';
 
 // FlowiseのエンドポイントとAPIキーを環境変数から取得
 const FLOWISE_API_URL = process.env.FLOWISE_API_URL || 'http://localhost:3000';
-const FLOWISE_CHATFLOW_ID = process.env.FLOWISE_CHATFLOW_ID || '';
+const FLOWISE_CHATFLOW_ID = process.env.FLOWISE_DEFAULT_CHATFLOW_ID || '';
 const FLOWISE_API_KEY = process.env.FLOWISE_API_KEY;
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, sessionId } = await request.json();
+    const { message, sessionId, chatflowId } = await request.json();
 
     if (!message) {
       return NextResponse.json(
@@ -18,7 +18,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!FLOWISE_CHATFLOW_ID) {
+    const targetChatflowId = chatflowId || FLOWISE_CHATFLOW_ID;
+
+    if (!targetChatflowId) {
       return NextResponse.json(
         { error: 'Flowise chatflow ID is not configured' },
         { status: 500 }
@@ -27,24 +29,28 @@ export async function POST(request: NextRequest) {
 
     const flowiseClient = new FlowiseClient({
       apiUrl: FLOWISE_API_URL,
-      chatflowId: FLOWISE_CHATFLOW_ID,
+      chatflowId: targetChatflowId,
       apiKey: FLOWISE_API_KEY
     });
 
     // セッションIDがない場合は新しく生成
     const currentSessionId = sessionId || uuidv4();
 
-    const response = await flowiseClient.sendMessage(
+    // 新しいpredict APIを使用
+    const response = await flowiseClient.predict(
+      targetChatflowId,
       message,
-      currentSessionId
+      { sessionId: currentSessionId }
     );
 
     return NextResponse.json({
-      message: response.text || response.question || '',
+      message: response.text || '',
       sessionId: currentSessionId,
       sourceDocuments: response.sourceDocuments,
       chatId: response.chatId,
-      chatMessageId: response.chatMessageId
+      chatMessageId: response.chatMessageId,
+      usedTools: response.usedTools,
+      agentReasoning: response.agentReasoning
     });
   } catch (error) {
     console.error('Error in chat API:', error);

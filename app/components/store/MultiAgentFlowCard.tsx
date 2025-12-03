@@ -63,8 +63,8 @@ export default function MultiAgentFlowCard({ flow }: MultiAgentFlowCardProps) {
   const [liked, setLiked] = React.useState(false);
 
   const handleCardClick = () => {
-    // Navigate to multi-agent canvas
-    router.push(`/multi-agent?flowId=${flow.id}`);
+    // Navigate to agent canvas (OwlAgentとして統合)
+    router.push(`/agent-canvas/${flow.id}`);
   };
 
   const handleLikeClick = (e: React.MouseEvent) => {

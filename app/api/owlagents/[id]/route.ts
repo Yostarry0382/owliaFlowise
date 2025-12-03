@@ -24,11 +24,11 @@ async function saveOwlAgent(owlAgent: OwlAgent): Promise<void> {
 
 // GET: Retrieve a specific Owl Agent by ID
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     if (!id) {
       return NextResponse.json(
@@ -62,10 +62,10 @@ export async function GET(
 // PUT: Update a specific Owl Agent by ID
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
 
     if (!id) {
@@ -114,11 +114,11 @@ export async function PUT(
 
 // DELETE: Delete a specific Owl Agent by ID
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     if (!id) {
       return NextResponse.json(

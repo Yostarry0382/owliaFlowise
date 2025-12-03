@@ -1,358 +1,365 @@
 'use client';
 
-import React, { useState, useCallback, useRef, DragEvent } from 'react';
-import ReactFlow, {
-  ReactFlowProvider,
-  Controls,
-  MiniMap,
-  Background,
-  useNodesState,
-  useEdgesState,
-  addEdge,
-  Connection,
-  Edge,
-  Node,
-  ReactFlowInstance,
-  BackgroundVariant,
-} from 'reactflow';
-import 'reactflow/dist/style.css';
-import { Box, AppBar, Toolbar, Typography, IconButton, Tooltip, Button, Paper, Dialog, DialogTitle, DialogContent, TextField, DialogActions } from '@mui/material';
-import SaveIcon from '@mui/icons-material/Save';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  AppBar,
+  Toolbar,
+  Typography,
+  IconButton,
+  Tooltip,
+  Button,
+  Paper,
+  Alert,
+  CircularProgress,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  ListItemIcon,
+  Divider,
+  Chip,
+  Card,
+  CardContent,
+  CardActions,
+} from '@mui/material';
 import HomeIcon from '@mui/icons-material/Home';
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import AddIcon from '@mui/icons-material/Add';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import ChatIcon from '@mui/icons-material/Chat';
+import GroupWorkIcon from '@mui/icons-material/GroupWork';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { useRouter } from 'next/navigation';
-import { v4 as uuidv4 } from 'uuid';
 
-import OwlAgentNode from '@/app/components/multi-agent/OwlAgentNode';
-import AgentSidebar from '@/app/components/multi-agent/AgentSidebar';
-import { MultiAgentFlow, OwlAgentNodeData } from '@/app/types/multi-agent';
+interface FlowiseChatflow {
+  id: string;
+  name: string;
+  deployed: boolean;
+  isPublic: boolean;
+  createdDate: string;
+  updatedDate: string;
+  category?: string;
+}
 
-// カスタムノードタイプの登録
-const nodeTypes = {
-  owlAgent: OwlAgentNode,
-};
+interface FlowiseAgentflow {
+  id: string;
+  name: string;
+  deployed: boolean;
+  isPublic: boolean;
+  createdDate: string;
+  updatedDate: string;
+}
 
-// エッジスタイル
-const defaultEdgeOptions = {
-  style: { stroke: '#90CAF9', strokeWidth: 2 },
-  animated: true,
-  type: 'smoothstep',
-};
+interface FlowiseStatus {
+  success: boolean;
+  status: string;
+  apiUrl: string;
+  chatflowCount?: number;
+  error?: string;
+}
 
+/**
+ * Flowise マルチエージェント管理コンポーネント
+ * Flowiseのagentflowsとマルチエージェント機能を管理
+ */
 export default function MultiAgentCanvas() {
   const router = useRouter();
-  const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
-  const [flowName, setFlowName] = useState('新しいマルチエージェントフロー');
-  const [flowDescription, setFlowDescription] = useState('');
-  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
-  const [selectedFlow, setSelectedFlow] = useState<MultiAgentFlow | null>(null);
+  const [status, setStatus] = useState<FlowiseStatus | null>(null);
+  const [chatflows, setChatflows] = useState<FlowiseChatflow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // ノード接続時の処理
-  const onConnect = useCallback(
-    (params: Edge | Connection) => setEdges((eds) => addEdge({ ...params, ...defaultEdgeOptions }, eds)),
-    [setEdges]
-  );
+  const flowiseUrl = process.env.NEXT_PUBLIC_FLOWISE_API_URL || 'http://localhost:3000';
 
-  // ドラッグオーバー時の処理
-  const onDragOver = useCallback((event: DragEvent) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
+  const checkStatus = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/flowise/status');
+      const data = await response.json();
+      setStatus(data);
+
+      if (data.success) {
+        const chatflowsResponse = await fetch('/api/flowise/chatflows');
+        if (chatflowsResponse.ok) {
+          const chatflowsData = await chatflowsResponse.json();
+          setChatflows(chatflowsData);
+        }
+      }
+    } catch (err) {
+      setError('Flowiseサーバーへの接続に失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    checkStatus();
   }, []);
 
-  // ドロップ時の処理
-  const onDrop = useCallback(
-    (event: DragEvent) => {
-      event.preventDefault();
-
-      if (!reactFlowWrapper.current || !reactFlowInstance) {
-        return;
-      }
-
-      const reactFlowBounds = reactFlowWrapper.current.getBoundingClientRect();
-      const data = event.dataTransfer.getData('application/reactflow');
-
-      if (!data) return;
-
-      try {
-        const agentData = JSON.parse(data);
-
-        if (agentData.type !== 'owlAgent') return;
-
-        const position = reactFlowInstance.project({
-          x: event.clientX - reactFlowBounds.left,
-          y: event.clientY - reactFlowBounds.top,
-        });
-
-        const newNode: Node<OwlAgentNodeData> = {
-          id: uuidv4(),
-          type: 'owlAgent',
-          position,
-          data: {
-            agentId: agentData.agentId,
-            agentName: agentData.agentName,
-            agentDescription: agentData.agentDescription,
-            status: 'idle',
-          },
-        };
-
-        setNodes((nds) => nds.concat(newNode));
-      } catch (error) {
-        console.error('Failed to parse dropped data:', error);
-      }
-    },
-    [reactFlowInstance, setNodes]
-  );
-
-  // フロー保存
-  const handleSaveFlow = async () => {
-    const flow: MultiAgentFlow = {
-      id: selectedFlow?.id || uuidv4(),
-      name: flowName,
-      description: flowDescription,
-      agents: nodes.map(node => ({
-        id: node.id,
-        agentId: node.data.agentId,
-        agentName: node.data.agentName,
-        agentDescription: node.data.agentDescription,
-        position: node.position,
-        data: node.data,
-      })),
-      edges: edges.map(edge => ({
-        id: edge.id,
-        sourceAgentNodeId: edge.source,
-        targetAgentNodeId: edge.target,
-        type: edge.type,
-        animated: edge.animated,
-        style: edge.style,
-        data: edge.data,
-      })),
-    };
-
-    try {
-      const response = await fetch('/api/multi-agent-flows', {
-        method: selectedFlow ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(flow),
-      });
-
-      if (response.ok) {
-        const savedFlow = await response.json();
-        setSelectedFlow(savedFlow);
-        setSaveDialogOpen(false);
-        alert('フローを保存しました！');
-      }
-    } catch (error) {
-      console.error('Failed to save flow:', error);
-      alert('フローの保存に失敗しました');
-    }
+  const openFlowiseAgentflows = () => {
+    window.open(`${flowiseUrl}/agentflows`, '_blank');
   };
 
-  // フロー実行
-  const handleExecuteFlow = async () => {
-    if (nodes.length === 0) {
-      alert('実行するエージェントがありません');
-      return;
-    }
-
-    const executionData = {
-      flowId: selectedFlow?.id || 'temp-' + uuidv4(),
-      nodes,
-      edges,
-    };
-
-    try {
-      const response = await fetch('/api/multi-agent-flows/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(executionData),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log('Execution result:', result);
-        alert('フローの実行を開始しました');
-      }
-    } catch (error) {
-      console.error('Failed to execute flow:', error);
-      alert('フローの実行に失敗しました');
-    }
+  const openFlowiseMarketplace = () => {
+    window.open(`${flowiseUrl}/marketplaces`, '_blank');
   };
 
-  return (
-    <Box sx={{ display: 'flex', height: '100vh', backgroundColor: '#0A0A0A' }}>
-      {/* サイドバー */}
-      <AgentSidebar />
+  const openChat = (chatflowId: string) => {
+    window.open(`/chat?chatflow=${chatflowId}`, '_blank');
+  };
 
-      {/* メインキャンバス */}
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        {/* ツールバー */}
-        <AppBar position="static" sx={{ backgroundColor: '#1E1E1E' }}>
-          <Toolbar>
-            <IconButton
-              edge="start"
-              color="inherit"
-              onClick={() => router.push('/')}
-              sx={{ mr: 2 }}
-            >
-              <HomeIcon />
-            </IconButton>
+  const openFlowiseChatflow = (chatflowId: string) => {
+    window.open(`${flowiseUrl}/canvas/${chatflowId}`, '_blank');
+  };
 
-            <Typography variant="h6" sx={{ flexGrow: 1 }}>
-              🦉 Multi-Agent Canvas - {flowName}
-            </Typography>
-
-            <Tooltip title="フローを保存">
-              <IconButton color="inherit" onClick={() => setSaveDialogOpen(true)}>
-                <SaveIcon />
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title="フローを実行">
-              <IconButton color="inherit" onClick={handleExecuteFlow}>
-                <PlayArrowIcon />
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title="ヘルプ">
-              <IconButton color="inherit">
-                <HelpOutlineIcon />
-              </IconButton>
-            </Tooltip>
-          </Toolbar>
-        </AppBar>
-
-        {/* React Flowキャンバス */}
-        <ReactFlowProvider>
-          <Box
-            ref={reactFlowWrapper}
-            sx={{ flex: 1, position: 'relative' }}
-          >
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onInit={setReactFlowInstance}
-              onDrop={onDrop}
-              onDragOver={onDragOver}
-              nodeTypes={nodeTypes}
-              defaultEdgeOptions={defaultEdgeOptions}
-              fitView
-              attributionPosition="bottom-left"
-            >
-              <Controls />
-              <MiniMap
-                nodeColor={(node) => {
-                  switch (node.data?.status) {
-                    case 'running': return '#FFA726';
-                    case 'success': return '#66BB6A';
-                    case 'error': return '#EF5350';
-                    default: return '#90CAF9';
-                  }
-                }}
-                style={{
-                  backgroundColor: '#1E1E1E',
-                  border: '1px solid #333',
-                }}
-              />
-              <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#333" />
-            </ReactFlow>
-
-            {/* 空状態メッセージ */}
-            {nodes.length === 0 && (
-              <Box
-                sx={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  textAlign: 'center',
-                  pointerEvents: 'none',
-                }}
-              >
-                <Typography variant="h4" sx={{ color: '#666', mb: 2 }}>
-                  🦉 エージェントをドラッグして配置
-                </Typography>
-                <Typography variant="body1" sx={{ color: '#555' }}>
-                  左側のサイドバーからエージェントをドラッグ＆ドロップしてください
-                </Typography>
-              </Box>
-            )}
-          </Box>
-        </ReactFlowProvider>
-      </Box>
-
-      {/* 保存ダイアログ */}
-      <Dialog
-        open={saveDialogOpen}
-        onClose={() => setSaveDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            backgroundColor: '#2C2C2C',
-            color: '#E0E0E0',
-          },
+  if (loading) {
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100%',
+          gap: 2,
+          bgcolor: '#0A0A0A',
         }}
       >
-        <DialogTitle>フローを保存</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="フロー名"
-            fullWidth
-            variant="outlined"
-            value={flowName}
-            onChange={(e) => setFlowName(e.target.value)}
+        <CircularProgress sx={{ color: '#90CAF9' }} />
+        <Typography sx={{ color: '#E0E0E0' }}>Flowiseサーバーに接続中...</Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: '#0A0A0A' }}>
+      {/* ツールバー */}
+      <AppBar position="static" sx={{ backgroundColor: '#1E1E1E' }}>
+        <Toolbar>
+          <IconButton
+            edge="start"
+            color="inherit"
+            onClick={() => router.push('/')}
+            sx={{ mr: 2 }}
+          >
+            <HomeIcon />
+          </IconButton>
+
+          <Typography variant="h6" sx={{ flexGrow: 1 }}>
+            Multi-Agent Canvas (Flowise)
+          </Typography>
+
+          <Tooltip title="更新">
+            <IconButton color="inherit" onClick={checkStatus}>
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+
+          <Button
+            variant="contained"
+            startIcon={<OpenInNewIcon />}
+            onClick={openFlowiseAgentflows}
+            disabled={!status?.success}
             sx={{
-              mb: 2,
-              '& .MuiInputBase-root': {
-                color: '#E0E0E0',
-              },
-              '& .MuiOutlinedInput-root': {
-                '& fieldset': {
-                  borderColor: '#666',
-                },
-              },
+              ml: 2,
+              backgroundColor: '#90CAF9',
+              color: '#000',
+              '&:hover': { backgroundColor: '#64B5F6' },
             }}
-          />
-          <TextField
-            margin="dense"
-            label="説明"
-            fullWidth
-            variant="outlined"
-            multiline
-            rows={3}
-            value={flowDescription}
-            onChange={(e) => setFlowDescription(e.target.value)}
-            sx={{
-              '& .MuiInputBase-root': {
-                color: '#E0E0E0',
-              },
-              '& .MuiOutlinedInput-root': {
-                '& fieldset': {
-                  borderColor: '#666',
-                },
-              },
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSaveDialogOpen(false)} sx={{ color: '#999' }}>
-            キャンセル
+          >
+            Agentflowsを開く
           </Button>
-          <Button onClick={handleSaveFlow} variant="contained" sx={{ backgroundColor: '#90CAF9', color: '#000' }}>
-            保存
-          </Button>
-        </DialogActions>
-      </Dialog>
+        </Toolbar>
+      </AppBar>
+
+      {/* メインコンテンツ */}
+      <Box sx={{ flex: 1, p: 3, overflow: 'auto' }}>
+        {/* 接続ステータス */}
+        {status?.success ? (
+          <Alert severity="success" sx={{ mb: 3 }}>
+            Flowiseサーバーに接続済み ({status.apiUrl})
+          </Alert>
+        ) : (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            Flowiseサーバーに接続できません: {status?.error || error}
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="body2">
+                Flowiseサーバーを起動してください: <code>npx flowise start</code>
+              </Typography>
+            </Box>
+          </Alert>
+        )}
+
+        {status?.success && (
+          <>
+            {/* クイックアクション */}
+            <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+              <Card sx={{ bgcolor: '#1E1E1E', minWidth: 250 }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <SmartToyIcon sx={{ color: '#90CAF9' }} />
+                    <Typography variant="h6" sx={{ color: '#E0E0E0' }}>
+                      Agentflows
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" sx={{ color: '#999' }}>
+                    AIエージェントのワークフローを作成・管理
+                  </Typography>
+                </CardContent>
+                <CardActions>
+                  <Button
+                    size="small"
+                    startIcon={<OpenInNewIcon />}
+                    onClick={openFlowiseAgentflows}
+                    sx={{ color: '#90CAF9' }}
+                  >
+                    開く
+                  </Button>
+                </CardActions>
+              </Card>
+
+              <Card sx={{ bgcolor: '#1E1E1E', minWidth: 250 }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <GroupWorkIcon sx={{ color: '#90CAF9' }} />
+                    <Typography variant="h6" sx={{ color: '#E0E0E0' }}>
+                      マーケットプレイス
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" sx={{ color: '#999' }}>
+                    テンプレートやノードを探す
+                  </Typography>
+                </CardContent>
+                <CardActions>
+                  <Button
+                    size="small"
+                    startIcon={<OpenInNewIcon />}
+                    onClick={openFlowiseMarketplace}
+                    sx={{ color: '#90CAF9' }}
+                  >
+                    開く
+                  </Button>
+                </CardActions>
+              </Card>
+            </Box>
+
+            {/* Chatflow一覧 */}
+            <Paper sx={{ p: 3, bgcolor: '#1E1E1E' }}>
+              <Typography variant="h6" sx={{ color: '#E0E0E0', mb: 2 }}>
+                利用可能なChatflows
+              </Typography>
+
+              {chatflows.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <GroupWorkIcon sx={{ fontSize: 64, color: 'grey.600', mb: 2 }} />
+                  <Typography sx={{ color: '#999' }} gutterBottom>
+                    Chatflowがありません
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<OpenInNewIcon />}
+                    onClick={openFlowiseAgentflows}
+                    sx={{ mt: 2, backgroundColor: '#90CAF9', color: '#000' }}
+                  >
+                    新しいAgentflowを作成
+                  </Button>
+                </Box>
+              ) : (
+                <List>
+                  {chatflows.map((chatflow, index) => (
+                    <React.Fragment key={chatflow.id}>
+                      {index > 0 && <Divider sx={{ borderColor: '#333' }} />}
+                      <ListItem
+                        secondaryAction={
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Button
+                              size="small"
+                              startIcon={<ChatIcon />}
+                              onClick={() => openChat(chatflow.id)}
+                              sx={{ color: '#90CAF9' }}
+                            >
+                              チャット
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<OpenInNewIcon />}
+                              onClick={() => openFlowiseChatflow(chatflow.id)}
+                              sx={{ borderColor: '#666', color: '#E0E0E0' }}
+                            >
+                              編集
+                            </Button>
+                          </Box>
+                        }
+                        disablePadding
+                      >
+                        <ListItemButton>
+                          <ListItemIcon>
+                            <SmartToyIcon sx={{ color: '#90CAF9' }} />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Typography sx={{ color: '#E0E0E0' }}>
+                                  {chatflow.name}
+                                </Typography>
+                                {chatflow.deployed && (
+                                  <Chip label="デプロイ済み" size="small" color="success" />
+                                )}
+                              </Box>
+                            }
+                            secondary={
+                              <Typography variant="body2" sx={{ color: '#999' }}>
+                                ID: {chatflow.id.substring(0, 8)}...
+                              </Typography>
+                            }
+                          />
+                        </ListItemButton>
+                      </ListItem>
+                    </React.Fragment>
+                  ))}
+                </List>
+              )}
+            </Paper>
+          </>
+        )}
+
+        {/* 未接続時のガイド */}
+        {!status?.success && (
+          <Paper sx={{ p: 3, bgcolor: '#1E1E1E' }}>
+            <Typography variant="h6" sx={{ color: '#E0E0E0', mb: 2 }}>
+              Flowiseのセットアップ
+            </Typography>
+            <List>
+              <ListItem>
+                <ListItemText
+                  primary={<Typography sx={{ color: '#E0E0E0' }}>1. Flowiseをインストール</Typography>}
+                  secondary={<code style={{ color: '#90CAF9' }}>npm install -g flowise</code>}
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemText
+                  primary={<Typography sx={{ color: '#E0E0E0' }}>2. Flowiseを起動</Typography>}
+                  secondary={<code style={{ color: '#90CAF9' }}>npx flowise start</code>}
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemText
+                  primary={<Typography sx={{ color: '#E0E0E0' }}>3. 環境変数を設定</Typography>}
+                  secondary={<code style={{ color: '#90CAF9' }}>NEXT_PUBLIC_FLOWISE_API_URL=http://localhost:3000</code>}
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemText
+                  primary={<Typography sx={{ color: '#E0E0E0' }}>4. このページを更新</Typography>}
+                  secondary={<Typography sx={{ color: '#999' }}>Flowiseサーバーに接続されます</Typography>}
+                />
+              </ListItem>
+            </List>
+          </Paper>
+        )}
+      </Box>
     </Box>
   );
 }

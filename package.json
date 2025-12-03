@@ -17,6 +17,7 @@
     "@supabase/supabase-js": "^2.81.1",
     "@types/uuid": "^11.0.0",
     "axios": "^1.7.7",
+    "flowise-embed-react": "^3.0.5",
     "langchain": "^1.0.4",
     "lucide-react": "^0.553.0",
     "next": "15.0.3",

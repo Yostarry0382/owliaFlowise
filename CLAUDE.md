@@ -4,9 +4,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Status
 
-**Current Status**: Active development - OwliaFabrica Visual AI Agent Builder
+**Current Status**: Active development - OwliaFabrica Visual AI Agent Builder (Flowise連携版)
 
-This project is a visual AI agent builder inspired by Flowise, providing a drag-and-drop interface for creating complex AI workflows and multi-agent systems using React Flow and Next.js. Features include single-agent flow building, multi-agent orchestration, human-in-the-loop review capabilities, and a PowerPro-style agent marketplace.
+This project is a visual AI agent builder that integrates with **Flowise** for AI workflow execution. It provides a drag-and-drop interface for creating complex AI workflows using React Flow and Next.js, with Flowise as the backend execution engine. Features include visual flow building, human-in-the-loop review capabilities, and a PowerPro-style agent marketplace.
+
+### Recent Updates (2025-12-01)
+- **OwlAgent統合**: シングルエージェントとマルチエージェントの概念を統合
+  - すべてのエージェントは`OwlAgent`として統一的に扱う
+  - フロー内で他のOwlAgentを参照できる`OwlAgentNode`タイプを追加
+  - `/multi-agent`ページは廃止、`/agent-canvas`に統合
+- **型定義の整理**: `multi-agent.ts`を廃止し、`flowise.ts`に統合
+
+### Recent Updates (2025-11-28)
+- **Flowise Integration**: Flowise APIとの完全統合を実装
+- **FlowiseClient**: Prediction API、Chatflows管理API、ファイルアップロードAPIをサポート
+- **Flowise Adapter**: React Flow形式とFlowise形式の相互変換レイヤーを追加
+- **API Enhancements**: `/api/flowise/chatflows`および`/api/flowise/status`エンドポイントを追加
+- **OwlAgent Sync**: OwlAgentをFlowiseのchatflowと同期するオプションを追加
+
+### Recent Updates (2025-11-18)
+- **Architecture Improvements**: 新しいディレクトリ構造（lib/hooks/services）を追加してコード組織化を改善
+- **Ability Calculation System**: 統計データに基づく能力値自動算出システムを実装
+- **Execution Engine**: フロー実行エンジンとOwlAgent実行器の基礎実装
+- **Statistics Service**: エージェント実行統計の収集・永続化サービスを構築
+- **Custom Hooks**: useOwlAgentsとuseFlowExecutionフックでコンポーネント開発を簡素化
+- **API Enhancements**: 統計情報と評価のための新しいAPIエンドポイントを追加
+- **Component Integration**: SavedOwlsListとAgentStoreCardを実データと統合
 
 ### Recent Updates (2025-11-17)
 - **Agent Store**: PowerPro野球風のカードデザインでエージェントを表示するマーケットプレイス機能を追加
@@ -21,7 +44,8 @@ This project is a visual AI agent builder inspired by Flowise, providing a drag-
 - **Styling**: Tailwind CSS 3.3.0, Material-UI 7.3.5
 - **Flow Builder**: React Flow 11.11.4 for visual workflow creation
 - **UI Components**: Material-UI components with custom React nodes
-- **AI Integration**: LangChain, OpenAI API support
+- **AI Backend**: **Flowise** (required) - LLM orchestration and execution engine
+- **AI Integration**: LangChain, OpenAI API support (via Flowise)
 - **State Management**: Zustand 5.0.8
 - **Database**: Prisma ORM, Supabase support
 - **Package Manager**: npm
@@ -33,9 +57,9 @@ The project is now fully configured with the following structure:
 
 1. **Next.js Application**: Initialized with TypeScript support and App Router
 2. **Visual Flow Builder**: React Flow based drag-and-drop interface for AI workflows
-3. **Node System**: 10+ node types for different AI operations (LLM, Vector Store, Memory, etc.)
-4. **Multi-Agent System**: Visual canvas for connecting multiple OwlAgents into complex workflows
-5. **API Routes**: Flow management, execution, and multi-agent orchestration endpoints
+3. **Node System**: 10+ node types for different AI operations (LLM, Vector Store, Memory, OwlAgent Reference, etc.)
+4. **Unified Agent System**: すべてのエージェントをOwlAgentとして統一的に管理（フロー内で他のOwlAgentを参照可能）
+5. **API Routes**: Flow management, execution endpoints
 6. **OwlAgent Storage**: JSON-based storage for individual AI agents in `data/owlagents/`
 7. **Environment Configuration**: Uses `.env.local` for sensitive configuration
 8. **Development Server**: Runs on `http://localhost:3000` or `3001` if port is in use
@@ -76,44 +100,52 @@ app/
 ├── api/
 │   ├── flows/          # Flow management API routes
 │   │   ├── route.ts    # CRUD operations for flows
-│   │   └── execute/    # Flow execution engine with human review
+│   │   └── execute/    # Flow execution engine (Flowise integrated)
 │   │       └── route.ts
-│   ├── multi-agent-flows/  # Multi-agent flow management
-│   │   ├── route.ts    # CRUD operations for multi-agent flows
-│   │   └── execute/    # Multi-agent execution engine
+│   ├── flowise/        # Flowise integration APIs
+│   │   ├── chatflows/  # Chatflow management
+│   │   │   └── route.ts
+│   │   └── status/     # Flowise connection status
 │   │       └── route.ts
 │   └── owlagents/      # OwlAgent management
-│       ├── route.ts    # List and create OwlAgents
+│       ├── route.ts    # List and create OwlAgents (with Flowise sync)
+│       ├── statistics/ # Statistics and abilities API
+│       │   └── route.ts
 │       └── [id]/       # Dynamic route for agent operations
-│           └── route.ts
+│           ├── route.ts
+│           └── rate/   # Agent rating endpoint
+│               └── route.ts
 ├── components/          # Reusable UI components
 │   ├── FlowBuilder.tsx  # Main visual flow builder
 │   ├── NodeSidebar.tsx  # Drag-and-drop node palette
 │   ├── NodeConfigPanel.tsx # Node configuration panel with human review settings
 │   ├── HumanReviewSwitch.tsx # Switch component for human review toggle
 │   ├── HumanReviewModal.tsx # Modal for reviewing/approving node outputs
-│   ├── MultiAgentCanvas.tsx # Multi-agent visual canvas
+│   ├── MultiAgentCanvas.tsx # Flowise連携用キャンバス
 │   ├── SavedOwlsList.tsx # Component for displaying saved OwlAgents
-│   ├── multi-agent/    # Multi-agent specific components
-│   │   ├── OwlAgentNode.tsx # Custom node for OwlAgent
-│   │   └── AgentSidebar.tsx # Sidebar for agent selection
 │   ├── store/          # Agent store components
 │   │   └── AgentStoreCard.tsx # PowerPro-style agent card display
 │   └── nodes/          # Custom node components
 │       └── CustomNode.tsx # Node component with review indicators
-├── multi-agent/        # Multi-agent canvas page
-│   └── page.tsx        # Multi-agent flow builder interface
 ├── agent-canvas/       # Individual agent canvas
 │   ├── page.tsx        # Single agent flow builder (list view)
 │   └── [id]/           # Dynamic route for specific agent canvas
 │       └── page.tsx    # Agent editor canvas
 ├── store/              # Agent store page
 │   └── page.tsx        # Agent marketplace interface
-├── lib/                # Utility functions and API clients
-│   └── flowise-client.ts
+├── lib/                # Business logic and utilities
+│   ├── ability-calculator.ts # Agent ability calculation logic
+│   ├── execution-engine.ts   # Flow execution engine
+│   ├── agent-executor.ts     # OwlAgent execution manager
+│   ├── flowise-client.ts     # Flowise API client (Prediction, Chatflows, Upload)
+│   └── flowise-adapter.ts    # React Flow ↔ Flowise format converter
+├── hooks/              # Custom React hooks
+│   ├── useOwlAgents.ts       # Agent management hook
+│   └── useFlowExecution.ts   # Flow execution hook
+├── services/           # Service layer
+│   └── statistics-service.ts # Statistics collection service
 ├── types/              # TypeScript type definitions
-│   ├── flowise.ts      # Includes HumanReviewConfig and ReviewStatus types
-│   └── multi-agent.ts  # Multi-agent system type definitions
+│   └── flowise.ts      # Flowise types, OwlAgent types, FlowDefinition types
 ├── layout.tsx          # Root layout with metadata
 ├── page.tsx            # Main application page with navigation hub
 └── globals.css         # Global styles with Tailwind
@@ -140,6 +172,90 @@ data/
 - **Repository**: https://github.com/Yostarry0382/OwliaFabrica
 - **Main branch**: `main`
 - **Author**: star'in (Yostarry0382)
+
+## Flowise Integration
+
+### Overview
+
+OwliaFabricaはFlowiseをバックエンドの実行エンジンとして使用します。Flowiseは強力なLLMオーケストレーションツールであり、複雑なAIワークフローを実行する機能を提供します。
+
+### Flowise Setup
+
+1. **Flowiseのインストール**
+```bash
+# npxで起動（推奨）
+npx flowise start
+
+# またはDockerで起動
+docker run -d --name flowise -p 3000:3000 flowiseai/flowise
+```
+
+2. **環境変数の設定**
+```env
+# .env.local
+FLOWISE_API_URL=http://localhost:3000
+FLOWISE_API_KEY=your-api-key-here
+FLOWISE_DEFAULT_CHATFLOW_ID=optional-default-chatflow-id
+```
+
+### Flowise API Integration
+
+#### FlowiseClient (`lib/flowise-client.ts`)
+
+FlowiseClientはFlowise APIとの通信を管理するクライアントクラスです。
+
+**主要メソッド:**
+- `predict(chatflowId, question, options)` - Chatflowにメッセージを送信
+- `predictStream(chatflowId, question, options, onMessage)` - ストリーミング応答
+- `getChatflows()` - すべてのChatflowを取得
+- `getChatflow(id)` - 特定のChatflowを取得
+- `createChatflow(data)` - 新しいChatflowを作成
+- `updateChatflow(id, data)` - Chatflowを更新
+- `deleteChatflow(id)` - Chatflowを削除
+- `uploadFiles(files, chatflowId)` - ファイルをアップロード
+- `healthCheck()` - 接続状態を確認
+
+#### Flowise Adapter (`lib/flowise-adapter.ts`)
+
+React Flow形式とFlowise形式の間でフローデータを変換します。
+
+**主要関数:**
+- `convertFlowToFlowise(flow)` - FlowDefinitionをFlowiseFlowDataに変換
+- `convertFlowFromFlowise(flowData)` - FlowiseFlowDataをFlowDefinitionに変換
+- `serializeFlowForFlowise(flow)` - フローをJSON文字列にシリアライズ
+- `parseFlowFromFlowise(flowDataString)` - JSON文字列からフローを解析
+- `validateFlowForFlowise(flow)` - フローの検証
+
+### Flowise API Endpoints
+
+#### 接続ステータス
+- `GET /api/flowise/status` - Flowiseサーバーの接続状態を確認
+
+#### Chatflow管理
+- `GET /api/flowise/chatflows` - すべてのChatflowを取得
+- `GET /api/flowise/chatflows?id={id}` - 特定のChatflowを取得
+- `POST /api/flowise/chatflows` - 新しいChatflowを作成
+- `PUT /api/flowise/chatflows` - Chatflowを更新
+- `DELETE /api/flowise/chatflows?id={id}` - Chatflowを削除
+
+#### フロー実行
+- `POST /api/flows/execute` - フローを実行（Flowise経由）
+  - `chatflowId`: 直接Flowiseのchatflowを実行
+  - `nodes, edges`: OwliaFabricaフローを実行
+
+### OwlAgent-Flowise Sync
+
+OwlAgentを作成する際に`syncToFlowise: true`オプションを指定すると、FlowiseにChatflowとして自動登録されます。
+
+```typescript
+// POST /api/owlagents
+{
+  "name": "My Agent",
+  "description": "Description",
+  "flow": { nodes: [], edges: [] },
+  "syncToFlowise": true  // FlowiseにChatflowを作成
+}
+```
 
 ## OwliaFabrica Features
 
@@ -248,74 +364,155 @@ type AbilityRank = 'S' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
 - `app/agent-canvas/page.tsx`: エージェント一覧ページ
 - `app/agent-canvas/[id]/page.tsx`: 個別エージェント編集ページ
 
-### Multi-Agent System (新機能)
+### 統合エージェントシステム（OwlAgent）
 
-複数のOwlAgentを視覚的に配置・接続し、高度なマルチエージェントワークフローを構築できるシステム。
+**概念の統合**: 単一エージェントも複数エージェントの組み合わせも、すべて**OwlAgent**として統一的に扱います。
 
-#### システム概要
-- **Multi-Agent Canvas**: 複数のエージェントを視覚的に配置・接続できるキャンバス
-- **OwlAgent References**: 既存のOwlAgentへの参照をノードとして配置
-- **エージェント間通信**: エージェント同士でデータをやり取り
-- **トポロジカル実行**: 依存関係を解決した順次実行
-- **実行状態管理**: 各エージェントの状態をリアルタイムで可視化
+#### 設計思想
+- エージェントは処理単位として1つ
+- 複数のエージェントを組み合わせる場合も、それは新しい1つのOwlAgentとして保存
+- フロー内で他のOwlAgentを参照する`OwlAgentNode`タイプを使用
 
-#### Multi-Agent Canvas機能
-1. **ドラッグ&ドロップ配置**: サイドバーからエージェントをキャンバスに配置
-2. **視覚的接続**: エージェント間をエッジで接続してデータフローを定義
-3. **状態表示**: 実行中・成功・エラーをカラーコーディングで表示
-4. **MiniMap**: 大規模フローの全体像を俯瞰
-5. **フロー保存**: 作成したマルチエージェントフローを保存・再利用
+#### OwlAgentノード
+フロー内で他のOwlAgentを参照するためのノードタイプ：
 
-#### エージェント実行フロー
-1. **トポロジカルソート**: エッジの依存関係を解析して実行順序を決定
-2. **順次実行**: 決定された順序でエージェントを実行
-3. **データパイプライン**: 前のエージェントの出力を次のエージェントの入力に渡す
-4. **メッセージ記録**: エージェント間のデータ転送を全て記録
-5. **エラーハンドリング**: エージェントごとにエラーを捕捉して記録
-
-#### 型定義 (app/types/multi-agent.ts)
 ```typescript
-// OwlAgentへの参照ノード
-interface OwlAgentRefNode {
+// app/types/flowise.ts
+interface OwlAgentNode {
   id: string;
-  agentId: string;
-  agentName?: string;
-  agentDescription?: string;
+  type: 'owlAgent';
   position: { x: number; y: number };
-}
-
-// マルチエージェントフロー
-interface MultiAgentFlow {
-  id: string;
-  name: string;
-  description: string;
-  agents: OwlAgentRefNode[];
-  edges: OwlAgentEdge[];
-}
-
-// 実行コンテキスト
-interface MultiAgentExecutionContext {
-  flowId: string;
-  executionId: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  agents: { [agentId: string]: AgentStatus };
-  messages: AgentMessage[];
+  data: {
+    label: string;
+    agentId: string;  // 参照するOwlAgentのID
+    agentName?: string;
+    agentDescription?: string;
+    icon?: string;
+    inputMapping?: Record<string, string>;
+    outputMapping?: Record<string, string>;
+  };
 }
 ```
 
-#### 関連コンポーネント
-- `MultiAgentCanvas.tsx`: メインキャンバスコンポーネント
-- `OwlAgentNode.tsx`: エージェントノードの視覚表現
-- `AgentSidebar.tsx`: エージェント選択サイドバー
-- `/multi-agent/page.tsx`: マルチエージェントビルダーページ
-
 #### 使用方法
-1. `/multi-agent` ページにアクセス
-2. サイドバーから使用したいOwlAgentを選択
-3. キャンバスにドラッグ&ドロップで配置
-4. エージェント間をドラッグして接続
-5. フロー名と説明を設定して保存
-6. 実行ボタンでフローを実行
+1. `/agent-canvas`でエージェントを編集
+2. サイドバーから既存のOwlAgentをドラッグ&ドロップで配置
+3. 他のノードと同様にエッジで接続
+4. 保存すると、参照を含む新しいOwlAgentとして保存される
+
+#### Flowise連携
+`MultiAgentCanvas.tsx`はFlowiseのagentflowsとchatflowsを管理するためのコンポーネントとして機能します。
+
+### Ability Calculation System (2025-11-18 新実装)
+
+エージェントの能力値を統計データから自動算出するシステム。
+
+#### 能力値算出ロジック (`lib/ability-calculator.ts`)
+
+5つの主要能力を自動計算：
+
+1. **Popularity（人気度）**
+   - 実行回数（70%）と最近の使用頻度（30%）から算出
+   - 7日以内: 100%, 14日以内: 80%, 30日以内: 60%
+
+2. **Like（好感度）**
+   - ユーザー評価（1-5）の平均値を100点満点に変換
+
+3. **Reliability（安定性）**
+   - 成功率（80%）とエラー率（20%）から算出
+
+4. **Speed（応答速度）**
+   - 平均実行時間から算出
+   - 1秒以下: 100点, 3秒: 80点, 5秒: 60点, 10秒: 30点
+
+5. **CostEfficiency（コスパ）**
+   - 平均コストと成功率から効率を計算
+
+#### ランク判定システム
+```typescript
+S: 90-100点（最高評価）
+A: 80-89点（優秀）
+B: 70-79点（良好）
+C: 60-69点（標準）
+D: 50-59点（改善余地あり）
+E: 40-49点（要改善）
+F: 0-39点（問題あり）
+```
+
+### Execution Engine (2025-11-18 新実装)
+
+フローとエージェントの実行を管理するエンジン。
+
+#### フロー実行エンジン (`lib/execution-engine.ts`)
+
+**実装済みノード実行器**:
+- `LLMNodeExecutor`: OpenAI/Claude API統合（モックフォールバック付き）
+- `PromptTemplateNodeExecutor`: 変数置換機能
+- `MemoryNodeExecutor`: 会話履歴管理
+
+**主要機能**:
+- トポロジカルソートによる実行順序決定
+- ノードごとのエラーハンドリング
+- 人間確認機能のサポート
+- 実行ログとコンテキスト管理
+
+#### エージェント実行器 (`lib/agent-executor.ts`)
+
+**機能**:
+- 単一OwlAgentの実行
+- マルチエージェント順次実行
+- エージェント間データパイプライン
+- 実行メトリクスの自動収集
+- 循環依存の検出
+
+### Statistics Service (2025-11-18 新実装)
+
+統計データの収集と永続化を管理するサービス。
+
+#### 統計管理サービス (`services/statistics-service.ts`)
+
+**主要機能**:
+- 実行統計の記録（成功率、実行時間、コスト）
+- ユーザー評価の管理
+- JSONファイルへの永続化（`data/statistics.json`）
+- CSV形式でのエクスポート
+- 人気エージェントのランキング
+- パフォーマンス低下エージェントの特定
+
+**統計データ構造**:
+```typescript
+interface AgentStatistics {
+  executionCount: number;      // 実行回数
+  successRate: number;         // 成功率
+  averageExecutionTime: number;// 平均実行時間
+  userRatings: number[];       // ユーザー評価
+  errorCount: number;          // エラー数
+  lastExecuted: Date | null;   // 最終実行日時
+  totalCost: number;           // 累計コスト
+}
+```
+
+### Custom Hooks (2025-11-18 新実装)
+
+コンポーネント開発を簡素化するカスタムフック。
+
+#### useOwlAgents Hook (`hooks/useOwlAgents.ts`)
+
+**提供機能**:
+- エージェント一覧の取得と管理
+- CRUD操作（作成、読取、更新、削除）
+- 能力値の取得とキャッシュ
+- エージェント評価の送信
+- エラーハンドリング
+
+#### useFlowExecution Hook (`hooks/useFlowExecution.ts`)
+
+**提供機能**:
+- フロー実行の管理
+- 実行状態のリアルタイム追跡
+- 実行ログとエラーの管理
+- 人間確認リクエストの処理
+- ストリーミングレスポンス対応
 
 ### API Endpoints
 
@@ -339,37 +536,6 @@ interface MultiAgentExecutionContext {
   - Request: `{ action: 'check-pending' }`
   - Response: `{ success: boolean, pendingReviews: ReviewStatus[] }`
 
-#### Multi-Agent Flow Management
-- `GET /api/multi-agent-flows` - List all multi-agent flows or get specific flow
-  - Query params: `?id={flowId}` for specific flow
-  - Response: `{ flows: MultiAgentFlow[] }` or single `MultiAgentFlow`
-
-- `POST /api/multi-agent-flows` - Create new multi-agent flow
-  - Request: `{ name: string, description: string, agents: OwlAgentRefNode[], edges: OwlAgentEdge[] }`
-  - Response: `MultiAgentFlow` with generated ID and timestamps
-
-- `PUT /api/multi-agent-flows` - Update existing multi-agent flow
-  - Request: `{ id: string, name: string, description: string, agents: OwlAgentRefNode[], edges: OwlAgentEdge[] }`
-  - Response: Updated `MultiAgentFlow`
-
-- `DELETE /api/multi-agent-flows` - Delete multi-agent flow
-  - Query params: `?id={flowId}`
-  - Response: `{ message: string }`
-
-#### Multi-Agent Flow Execution
-- `POST /api/multi-agent-flows/execute` - Execute a multi-agent flow
-  - Request: `{ flowId: string, nodes: Node[], edges: Edge[], input?: any }`
-  - Response: `{ success: boolean, executionId: string, results: any[], context: MultiAgentExecutionContext }`
-  - Features:
-    - Topological sorting for execution order
-    - Sequential agent execution with data pipeline
-    - Message logging between agents
-    - Per-agent status tracking
-
-- `GET /api/multi-agent-flows/execute` - Get execution status
-  - Query params: `?executionId={executionId}`
-  - Response: `MultiAgentExecutionContext` with current execution state
-
 #### OwlAgent Management
 - `GET /api/owlagents` - List all saved OwlAgents
   - Response: Array of OwlAgent objects with metadata
@@ -388,6 +554,24 @@ interface MultiAgentExecutionContext {
 - `DELETE /api/owlagents?id={id}` - Delete OwlAgent
   - Query params: `?id={agentId}`
   - Response: `{ message: string }`
+
+#### Statistics and Abilities (2025-11-18 新規追加)
+
+- `POST /api/owlagents/statistics` - Calculate abilities from statistics
+  - Request: `{ agentId: string, stats?: AgentStatistics }`
+  - Response: `CalculatedAbilities` object with all ability scores and ranks
+
+- `GET /api/owlagents/statistics` - Get agent statistics
+  - Query params: `?agentId={agentId}` for specific agent, or no params for all
+  - Response: Statistics and calculated abilities for one or all agents
+
+- `PUT /api/owlagents/statistics` - Record execution
+  - Request: `{ agentId: string, success: boolean, executionTime: number, cost?: number }`
+  - Response: Updated statistics and recalculated abilities
+
+- `POST /api/owlagents/[id]/rate` - Rate an agent
+  - Request: `{ rating: number }` (1-5)
+  - Response: Updated statistics with new rating included
 
 ### Required Environment Variables
 
@@ -481,16 +665,14 @@ Consider containerization for:
 ### Current Limitations
 
 - Flow persistence is in-memory only (needs database integration)
-- Multi-agent flow persistence is in-memory only
 - OwlAgent data stored in JSON files (needs database migration)
-- Limited LLM node execution (mock implementation)
-- Multi-agent execution uses mock agent processing
+- ~~Limited LLM node execution (mock implementation)~~ → 基礎実装完了、API統合待ち
 - No real-time collaboration features
 - Basic error handling in flow execution
 - Authentication not yet implemented
-- No parallel agent execution in multi-agent flows
-- Agent Store uses mock data (needs real marketplace backend)
-- PowerPro card abilities are randomly generated (needs real metrics)
+- ~~Agent Store uses mock data~~ → 実データとの統合完了
+- ~~PowerPro card abilities are randomly generated~~ → 統計ベースの算出システム実装済み
+- ~~Multi-agent vs Single-agent separation~~ → OwlAgentに統合済み（2025-12-01）
 
 ### Planned Features
 
@@ -527,17 +709,14 @@ Consider containerization for:
    - WebSocket for real-time updates
    - Background job processing
 
-6. **Multi-Agent Enhancements**
-   - Parallel agent execution (when no dependencies)
-   - Real OwlAgent integration (currently using mock execution)
-   - Agent-to-agent streaming communication
-   - Conditional branching in multi-agent flows
+6. **OwlAgent Enhancements**
+   - Parallel OwlAgentNode execution (when no dependencies)
+   - OwlAgentNode streaming communication
+   - Conditional branching support
    - Looping and iteration support
    - Agent health monitoring
-   - Distributed agent execution
    - Agent result caching
-   - Agent marketplace/library
-   - Multi-agent debugging tools
+   - Debugging tools for nested agents
 
 7. **Agent Store Enhancements**
    - Real marketplace backend integration
@@ -589,11 +768,10 @@ When adding new features:
    - Check console for JavaScript errors
    - Verify React Flow is properly initialized
 
-6. **Multi-agent flow execution fails**
-   - Verify all agents exist in the data/owlagents directory
-   - Check for circular dependencies in agent connections
-   - Review execution logs in API response
-   - Ensure topological sort can resolve all dependencies
+6. **OwlAgentノードの実行が失敗する**
+   - 参照先のOwlAgentがdata/owlagentsディレクトリに存在するか確認
+   - 循環参照がないか確認（A→B→A）
+   - 実行ログでエラー詳細を確認
 
 7. **OwlAgent not appearing in sidebar**
    - Check data/owlagents directory exists
