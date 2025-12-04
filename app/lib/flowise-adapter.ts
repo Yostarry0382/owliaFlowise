@@ -215,8 +215,8 @@ export function convertReactFlowNodeToFlowise(node: ReactFlowNode): FlowiseNode 
         )
       ),
     },
-    width: node.width,
-    height: node.height,
+    width: node.width === null ? undefined : node.width,
+    height: node.height === null ? undefined : node.height,
   };
 }
 

@@ -54,22 +54,221 @@ import CodeIcon from '@mui/icons-material/Code';
 import TextFieldsIcon from '@mui/icons-material/TextFields';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteIcon from '@mui/icons-material/Delete';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import InputIcon from '@mui/icons-material/Input';
-import OutputIcon from '@mui/icons-material/Output';
+import DownloadIcon from '@mui/icons-material/Download';
+import DataObjectIcon from '@mui/icons-material/DataObject';
+import LinkIcon from '@mui/icons-material/Link';
+import PsychologyIcon from '@mui/icons-material/Psychology';
+import DescriptionIcon from '@mui/icons-material/Description';
+import BuildIcon from '@mui/icons-material/Build';
+import type { FlowiseNode, FlowiseEdge, FlowiseFlowData, FlowiseInputParam, FlowiseInputAnchor, FlowiseOutputAnchor } from '@/app/types/flowise';
 
-// ノードタイプの定義
-const nodeTypeConfigs = {
-  llm: { label: 'LLM', icon: SmartToyIcon, color: '#4CAF50', category: 'AI', description: '言語モデル処理' },
-  prompt: { label: 'プロンプト', icon: TextFieldsIcon, color: '#2196F3', category: 'Input', description: 'プロンプトテンプレート' },
-  memory: { label: 'メモリ', icon: MemoryIcon, color: '#9C27B0', category: 'Memory', description: '会話履歴管理' },
-  tool: { label: 'ツール', icon: CodeIcon, color: '#FF9800', category: 'Tool', description: '外部ツール連携' },
-  vectorStore: { label: 'ベクトルDB', icon: StorageIcon, color: '#E91E63', category: 'Database', description: 'ベクトル検索' },
-  input: { label: '入力', icon: InputIcon, color: '#00BCD4', category: 'IO', description: 'ユーザー入力' },
-  output: { label: '出力', icon: OutputIcon, color: '#8BC34A', category: 'IO', description: '結果出力' },
+// Flowise形式に準拠したノードタイプ定義
+interface NodeTypeConfig {
+  label: string;
+  name: string;
+  type: string;
+  icon: React.ElementType;
+  color: string;
+  category: string;
+  description: string;
+  baseClasses: string[];
+  inputParams: FlowiseInputParam[];
+  inputAnchors: FlowiseInputAnchor[];
+  outputAnchors: FlowiseOutputAnchor[];
+}
+
+const nodeTypeConfigs: Record<string, NodeTypeConfig> = {
+  chatOpenAI: {
+    label: 'ChatOpenAI',
+    name: 'chatOpenAI',
+    type: 'ChatOpenAI',
+    icon: SmartToyIcon,
+    color: '#4CAF50',
+    category: 'Chat Models',
+    description: 'OpenAI Chat Model',
+    baseClasses: ['ChatOpenAI', 'BaseChatModel', 'BaseLanguageModel', 'Runnable'],
+    inputParams: [
+      { label: 'Model Name', name: 'modelName', type: 'string', default: 'gpt-4' },
+      { label: 'Temperature', name: 'temperature', type: 'number', default: 0.7 },
+    ],
+    inputAnchors: [
+      { label: 'Cache', name: 'cache', type: 'BaseCache', optional: true },
+    ],
+    outputAnchors: [
+      { label: 'ChatOpenAI', name: 'chatOpenAI', type: 'ChatOpenAI | BaseChatModel | BaseLanguageModel | Runnable' },
+    ],
+  },
+  promptTemplate: {
+    label: 'Prompt Template',
+    name: 'promptTemplate',
+    type: 'PromptTemplate',
+    icon: TextFieldsIcon,
+    color: '#2196F3',
+    category: 'Prompts',
+    description: 'Schema to represent a basic prompt for an LLM',
+    baseClasses: ['PromptTemplate', 'BaseStringPromptTemplate', 'BasePromptTemplate'],
+    inputParams: [
+      { label: 'Template', name: 'template', type: 'string', default: '' },
+      { label: 'Format Prompt Values', name: 'promptValues', type: 'json', optional: true },
+    ],
+    inputAnchors: [],
+    outputAnchors: [
+      { label: 'PromptTemplate', name: 'promptTemplate', type: 'PromptTemplate | BaseStringPromptTemplate | BasePromptTemplate' },
+    ],
+  },
+  bufferMemory: {
+    label: 'Buffer Memory',
+    name: 'bufferMemory',
+    type: 'BufferMemory',
+    icon: MemoryIcon,
+    color: '#9C27B0',
+    category: 'Memory',
+    description: 'Retrieve chat messages stored in database',
+    baseClasses: ['BufferMemory', 'BaseChatMemory', 'BaseMemory'],
+    inputParams: [
+      { label: 'Session Id', name: 'sessionId', type: 'string', optional: true },
+      { label: 'Memory Key', name: 'memoryKey', type: 'string', default: 'chat_history' },
+    ],
+    inputAnchors: [],
+    outputAnchors: [
+      { label: 'BufferMemory', name: 'bufferMemory', type: 'BufferMemory | BaseChatMemory | BaseMemory' },
+    ],
+  },
+  llmChain: {
+    label: 'LLM Chain',
+    name: 'llmChain',
+    type: 'LLMChain',
+    icon: LinkIcon,
+    color: '#FF9800',
+    category: 'Chains',
+    description: 'Chain to run queries against LLMs',
+    baseClasses: ['LLMChain', 'BaseChain', 'Runnable'],
+    inputParams: [
+      { label: 'Chain Name', name: 'chainName', type: 'string', optional: true },
+    ],
+    inputAnchors: [
+      { label: 'Language Model', name: 'model', type: 'BaseLanguageModel' },
+      { label: 'Prompt', name: 'prompt', type: 'BasePromptTemplate' },
+    ],
+    outputAnchors: [
+      { label: 'LLM Chain', name: 'llmChain', type: 'LLMChain | BaseChain | Runnable' },
+    ],
+  },
+  conversationChain: {
+    label: 'Conversation Chain',
+    name: 'conversationChain',
+    type: 'ConversationChain',
+    icon: ChatIcon,
+    color: '#00BCD4',
+    category: 'Chains',
+    description: 'Chat models specific conversational chain with memory',
+    baseClasses: ['ConversationChain', 'LLMChain', 'BaseChain', 'Runnable'],
+    inputParams: [
+      { label: 'System Message', name: 'systemMessagePrompt', type: 'string', optional: true },
+    ],
+    inputAnchors: [
+      { label: 'Chat Model', name: 'model', type: 'BaseChatModel' },
+      { label: 'Memory', name: 'memory', type: 'BaseMemory' },
+    ],
+    outputAnchors: [
+      { label: 'ConversationChain', name: 'conversationChain', type: 'ConversationChain | LLMChain | BaseChain | Runnable' },
+    ],
+  },
+  conversationalAgent: {
+    label: 'Conversational Agent',
+    name: 'conversationalAgent',
+    type: 'AgentExecutor',
+    icon: PsychologyIcon,
+    color: '#E91E63',
+    category: 'Agents',
+    description: 'Conversational agent for a chat model',
+    baseClasses: ['AgentExecutor', 'BaseChain', 'Runnable'],
+    inputParams: [
+      { label: 'System Message', name: 'systemMessage', type: 'string', optional: true },
+      { label: 'Max Iterations', name: 'maxIterations', type: 'number', optional: true },
+    ],
+    inputAnchors: [
+      { label: 'Allowed Tools', name: 'tools', type: 'Tool', list: true },
+      { label: 'Chat Model', name: 'model', type: 'BaseChatModel' },
+      { label: 'Memory', name: 'memory', type: 'BaseChatMemory' },
+    ],
+    outputAnchors: [
+      { label: 'AgentExecutor', name: 'conversationalAgent', type: 'AgentExecutor | BaseChain | Runnable' },
+    ],
+  },
+  calculator: {
+    label: 'Calculator',
+    name: 'calculator',
+    type: 'Calculator',
+    icon: BuildIcon,
+    color: '#795548',
+    category: 'Tools',
+    description: 'Perform calculations on response',
+    baseClasses: ['Calculator', 'Tool', 'StructuredTool', 'BaseLangChain'],
+    inputParams: [],
+    inputAnchors: [],
+    outputAnchors: [
+      { label: 'Calculator', name: 'calculator', type: 'Calculator | Tool | StructuredTool | BaseLangChain' },
+    ],
+  },
+  vectorStoreRetriever: {
+    label: 'Vector Store Retriever',
+    name: 'vectorStoreRetriever',
+    type: 'VectorStoreRetriever',
+    icon: StorageIcon,
+    color: '#607D8B',
+    category: 'Retrievers',
+    description: 'Retrieve documents from vector store',
+    baseClasses: ['VectorStoreRetriever', 'BaseRetriever'],
+    inputParams: [
+      { label: 'Top K', name: 'topK', type: 'number', default: 4 },
+    ],
+    inputAnchors: [
+      { label: 'Vector Store', name: 'vectorStore', type: 'VectorStore' },
+    ],
+    outputAnchors: [
+      { label: 'Retriever', name: 'retriever', type: 'VectorStoreRetriever | BaseRetriever' },
+    ],
+  },
+  pdfLoader: {
+    label: 'PDF Loader',
+    name: 'pdfLoader',
+    type: 'Document',
+    icon: DescriptionIcon,
+    color: '#F44336',
+    category: 'Document Loaders',
+    description: 'Load data from PDF files',
+    baseClasses: ['Document'],
+    inputParams: [
+      { label: 'PDF File', name: 'pdfFile', type: 'file' },
+    ],
+    inputAnchors: [
+      { label: 'Text Splitter', name: 'textSplitter', type: 'TextSplitter', optional: true },
+    ],
+    outputAnchors: [
+      { label: 'Document', name: 'document', type: 'Document | json' },
+    ],
+  },
+  customTool: {
+    label: 'Custom Tool',
+    name: 'customTool',
+    type: 'CustomTool',
+    icon: CodeIcon,
+    color: '#9E9E9E',
+    category: 'Tools',
+    description: 'Use custom tool you have created',
+    baseClasses: ['CustomTool', 'Tool', 'StructuredTool', 'BaseLangChain'],
+    inputParams: [
+      { label: 'Tool Name', name: 'toolName', type: 'string' },
+      { label: 'Tool Description', name: 'toolDescription', type: 'string' },
+    ],
+    inputAnchors: [],
+    outputAnchors: [
+      { label: 'CustomTool', name: 'customTool', type: 'CustomTool | Tool | StructuredTool | BaseLangChain' },
+    ],
+  },
 };
 
-// ローカルストレージのキー
 const FLOWS_STORAGE_KEY = 'owliafabrica_flows';
 
 interface SavedFlow {
@@ -82,68 +281,130 @@ interface SavedFlow {
   updatedAt: string;
 }
 
-// カスタムノードコンポーネント
-function CustomNode({ data }: { data: { label: string; nodeType: string; description?: string; config?: Record<string, string> } }) {
-  const nodeType = nodeTypeConfigs[data.nodeType as keyof typeof nodeTypeConfigs] || nodeTypeConfigs.llm;
-  const IconComponent = nodeType.icon;
+// Flowise形式カスタムノードコンポーネント
+function FlowiseCustomNode({ id, data }: { id: string; data: {
+  label: string;
+  name: string;
+  type: string;
+  category: string;
+  description?: string;
+  baseClasses: string[];
+  inputs: Record<string, unknown>;
+  inputParams: FlowiseInputParam[];
+  inputAnchors: FlowiseInputAnchor[];
+  outputAnchors: FlowiseOutputAnchor[];
+  nodeTypeKey: string;
+} }) {
+  const nodeTypeKey = data.nodeTypeKey || 'chatOpenAI';
+  const config = nodeTypeConfigs[nodeTypeKey] || nodeTypeConfigs.chatOpenAI;
+  const IconComponent = config.icon;
 
   return (
     <Paper
       elevation={3}
       sx={{
-        p: 2,
-        minWidth: 180,
+        minWidth: 220,
         borderRadius: 2,
-        border: `2px solid ${nodeType.color}`,
+        border: `2px solid ${config.color}`,
         bgcolor: '#1e1e2e',
         color: '#fff',
         position: 'relative',
+        overflow: 'visible',
       }}
     >
-      {/* 入力ハンドル */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        style={{
-          background: nodeType.color,
-          width: 12,
-          height: 12,
-          border: '2px solid #1e1e2e',
-        }}
-      />
+      {data.inputAnchors.map((anchor, index) => (
+        <Handle
+          key={`input-${anchor.name}`}
+          type="target"
+          position={Position.Left}
+          id={`${id}-input-${anchor.name}-${anchor.type}`}
+          style={{
+            background: config.color,
+            width: 12,
+            height: 12,
+            border: '2px solid #1e1e2e',
+            top: 60 + index * 24,
+          }}
+        />
+      ))}
 
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-        <IconComponent sx={{ color: nodeType.color }} />
-        <Typography variant="subtitle2" fontWeight="bold">
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          p: 1.5,
+          borderBottom: `1px solid ${config.color}40`,
+          bgcolor: `${config.color}20`,
+        }}
+      >
+        <IconComponent sx={{ color: config.color, fontSize: 20 }} />
+        <Typography variant="subtitle2" fontWeight="bold" sx={{ flex: 1 }}>
           {data.label}
         </Typography>
+        <Chip
+          label={data.category}
+          size="small"
+          sx={{
+            height: 18,
+            fontSize: '0.6rem',
+            bgcolor: `${config.color}30`,
+            color: config.color,
+          }}
+        />
       </Box>
-      {data.description && (
-        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-          {data.description}
-        </Typography>
-      )}
 
-      {/* 出力ハンドル */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{
-          background: nodeType.color,
-          width: 12,
-          height: 12,
-          border: '2px solid #1e1e2e',
-        }}
-      />
+      <Box sx={{ p: 1.5 }}>
+        {data.description && (
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', display: 'block', mb: 1 }}>
+            {data.description}
+          </Typography>
+        )}
+
+        {data.inputAnchors.length > 0 && (
+          <Box sx={{ mb: 1 }}>
+            {data.inputAnchors.map((anchor) => (
+              <Typography key={anchor.name} variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
+                ← {anchor.label} {anchor.optional && '(optional)'}
+              </Typography>
+            ))}
+          </Box>
+        )}
+
+        {data.outputAnchors.length > 0 && (
+          <Box sx={{ textAlign: 'right' }}>
+            {data.outputAnchors.map((anchor) => (
+              <Typography key={anchor.name} variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
+                {anchor.label} →
+              </Typography>
+            ))}
+          </Box>
+        )}
+      </Box>
+
+      {data.outputAnchors.map((anchor, index) => (
+        <Handle
+          key={`output-${anchor.name}`}
+          type="source"
+          position={Position.Right}
+          id={`${id}-output-${anchor.name}-${anchor.type}`}
+          style={{
+            background: config.color,
+            width: 12,
+            height: 12,
+            border: '2px solid #1e1e2e',
+            top: 60 + index * 24,
+          }}
+        />
+      ))}
     </Paper>
   );
 }
 
 const customNodeTypes = {
-  custom: CustomNode,
+  customNode: FlowiseCustomNode,
 };
 
-// ローカルストレージからフローを読み込む
 function loadFlowsFromStorage(): SavedFlow[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -154,16 +415,58 @@ function loadFlowsFromStorage(): SavedFlow[] {
   }
 }
 
-// ローカルストレージにフローを保存
 function saveFlowsToStorage(flows: SavedFlow[]): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(FLOWS_STORAGE_KEY, JSON.stringify(flows));
 }
 
-/**
- * 統合フロービルダーコンポーネント
- * React Flowを使用してFabrica内でフローを直接作成・編集
- */
+// Flowise形式へのエクスポート関数
+function exportToFlowiseFormat(nodes: Node[], edges: Edge[]): FlowiseFlowData {
+  const flowiseNodes: FlowiseNode[] = nodes.map((node) => {
+    const data = node.data;
+    const nodeTypeKey = data.nodeTypeKey || 'chatOpenAI';
+    const config = nodeTypeConfigs[nodeTypeKey];
+
+    return {
+      id: node.id,
+      position: node.position,
+      type: 'customNode',
+      data: {
+        id: node.id,
+        label: data.label || config?.label || nodeTypeKey,
+        name: data.name || config?.name || nodeTypeKey,
+        type: data.type || config?.type || nodeTypeKey,
+        baseClasses: data.baseClasses || config?.baseClasses || [],
+        category: data.category || config?.category || 'Unknown',
+        description: data.description || config?.description,
+        inputParams: data.inputParams || config?.inputParams || [],
+        inputAnchors: data.inputAnchors || config?.inputAnchors || [],
+        inputs: data.inputs || {},
+        outputs: {},
+        outputAnchors: data.outputAnchors || config?.outputAnchors || [],
+      },
+      width: node.width || 300,
+      height: node.height || 200,
+    };
+  });
+
+  const flowiseEdges: FlowiseEdge[] = edges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    sourceHandle: edge.sourceHandle || '',
+    target: edge.target,
+    targetHandle: edge.targetHandle || '',
+    type: 'buttonedge',
+    data: { label: '' },
+  }));
+
+  return {
+    nodes: flowiseNodes,
+    edges: flowiseEdges,
+    viewport: { x: 0, y: 0, zoom: 1 },
+  };
+}
+
 function FlowBuilderInner() {
   const [flows, setFlows] = useState<SavedFlow[]>([]);
   const [editMode, setEditMode] = useState(false);
@@ -172,6 +475,8 @@ function FlowBuilderInner() {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [flowToDelete, setFlowToDelete] = useState<string | null>(null);
+  const [jsonDialogOpen, setJsonDialogOpen] = useState(false);
+  const [exportedJson, setExportedJson] = useState('');
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({
     open: false,
     message: '',
@@ -183,18 +488,21 @@ function FlowBuilderInner() {
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
-  // 初期読み込み
   useEffect(() => {
     const loadedFlows = loadFlowsFromStorage();
     setFlows(loadedFlows);
   }, []);
 
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds: Edge[]) => addEdge(params, eds)),
+    (params: Connection) => setEdges((eds: Edge[]) => addEdge({
+      ...params,
+      type: 'smoothstep',
+      animated: true,
+      style: { stroke: '#e94560', strokeWidth: 2 },
+    }, eds)),
     [setEdges]
   );
 
-  // ノードをドラッグ&ドロップで追加
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
@@ -209,19 +517,31 @@ function FlowBuilderInner() {
 
       const bounds = reactFlowWrapper.current.getBoundingClientRect();
       const position = {
-        x: event.clientX - bounds.left - 90,
-        y: event.clientY - bounds.top - 30,
+        x: event.clientX - bounds.left - 110,
+        y: event.clientY - bounds.top - 50,
       };
 
-      const nodeType = nodeTypeConfigs[type as keyof typeof nodeTypeConfigs];
+      const config = nodeTypeConfigs[type];
+      if (!config) return;
+
+      const nodeId = `${config.name}_${Date.now()}`;
+
       const newNode: Node = {
-        id: `${type}_${Date.now()}`,
-        type: 'custom',
+        id: nodeId,
+        type: 'customNode',
         position,
         data: {
-          label: nodeType?.label || type,
-          nodeType: type,
-          description: nodeType?.description || '',
+          label: config.label,
+          name: config.name,
+          type: config.type,
+          category: config.category,
+          description: config.description,
+          baseClasses: config.baseClasses,
+          inputs: {},
+          inputParams: config.inputParams,
+          inputAnchors: config.inputAnchors,
+          outputAnchors: config.outputAnchors,
+          nodeTypeKey: type,
         },
       };
 
@@ -230,7 +550,6 @@ function FlowBuilderInner() {
     [setNodes]
   );
 
-  // 新規フロー作成
   const createNewFlow = () => {
     setNodes([]);
     setEdges([]);
@@ -239,7 +558,6 @@ function FlowBuilderInner() {
     setEditMode(true);
   };
 
-  // フローを開く
   const openFlow = (flow: SavedFlow) => {
     setCurrentFlowId(flow.id);
     setCurrentFlowName(flow.name);
@@ -248,12 +566,10 @@ function FlowBuilderInner() {
     setEditMode(true);
   };
 
-  // フローを保存
   const saveFlow = () => {
     const now = new Date().toISOString();
 
     if (currentFlowId) {
-      // 更新
       const updatedFlows = flows.map((f) =>
         f.id === currentFlowId
           ? { ...f, name: currentFlowName, nodes, edges, updatedAt: now }
@@ -263,7 +579,6 @@ function FlowBuilderInner() {
       saveFlowsToStorage(updatedFlows);
       setSnackbar({ open: true, message: 'フローを更新しました', severity: 'success' });
     } else {
-      // 新規作成
       const newFlow: SavedFlow = {
         id: `flow_${Date.now()}`,
         name: currentFlowName,
@@ -282,7 +597,6 @@ function FlowBuilderInner() {
     setSaveDialogOpen(false);
   };
 
-  // フローを削除
   const deleteFlow = () => {
     if (!flowToDelete) return;
 
@@ -294,7 +608,6 @@ function FlowBuilderInner() {
     setSnackbar({ open: true, message: 'フローを削除しました', severity: 'info' });
   };
 
-  // エディタを閉じる
   const closeEditor = () => {
     setEditMode(false);
     setCurrentFlowId(null);
@@ -302,19 +615,41 @@ function FlowBuilderInner() {
     setEdges([]);
   };
 
-  // チャット画面を開く
+  const exportJson = () => {
+    const flowiseData = exportToFlowiseFormat(nodes, edges);
+    const jsonString = JSON.stringify(flowiseData, null, 2);
+    setExportedJson(jsonString);
+    setJsonDialogOpen(true);
+  };
+
+  const copyJsonToClipboard = () => {
+    navigator.clipboard.writeText(exportedJson);
+    setSnackbar({ open: true, message: 'JSONをクリップボードにコピーしました', severity: 'success' });
+  };
+
+  const downloadJson = () => {
+    const blob = new Blob([exportedJson], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${currentFlowName.replace(/\s+/g, '_')}_flowise.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setSnackbar({ open: true, message: 'JSONファイルをダウンロードしました', severity: 'success' });
+  };
+
   const openChat = (flowId: string) => {
     window.open(`/chat?flowId=${flowId}`, '_blank');
   };
 
-  // エディタモード
   if (editMode) {
     return (
       <Box sx={{ height: '100%', display: 'flex', bgcolor: '#1a1a2e' }}>
-        {/* 左サイドバー - ノードパレット */}
         <Paper
           sx={{
-            width: 240,
+            width: 260,
             borderRadius: 0,
             bgcolor: '#16213e',
             borderRight: '2px solid #0f3460',
@@ -347,14 +682,15 @@ function FlowBuilderInner() {
                     mb: 1,
                     bgcolor: '#0f3460',
                     cursor: 'grab',
-                    '&:hover': { bgcolor: '#1a4080' },
+                    '&:hover': { bgcolor: '#1a4080', transform: 'scale(1.02)' },
                     '&:active': { cursor: 'grabbing' },
+                    transition: 'all 0.2s ease',
                   }}
                 >
                   <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <IconComponent sx={{ color: config.color, fontSize: 20 }} />
-                      <Typography variant="body2" sx={{ color: '#fff' }}>
+                      <Typography variant="body2" sx={{ color: '#fff', fontWeight: 500 }}>
                         {config.label}
                       </Typography>
                     </Box>
@@ -368,8 +704,8 @@ function FlowBuilderInner() {
                         mt: 0.5,
                         height: 18,
                         fontSize: '0.65rem',
-                        bgcolor: 'rgba(255,255,255,0.1)',
-                        color: 'rgba(255,255,255,0.6)',
+                        bgcolor: `${config.color}30`,
+                        color: config.color,
                       }}
                     />
                   </CardContent>
@@ -379,9 +715,7 @@ function FlowBuilderInner() {
           </Box>
         </Paper>
 
-        {/* メインキャンバス */}
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          {/* ツールバー */}
           <Box
             sx={{
               display: 'flex',
@@ -412,6 +746,20 @@ function FlowBuilderInner() {
               )}
             </Box>
             <Box sx={{ display: 'flex', gap: 1 }}>
+              <Tooltip title="Flowise形式でJSONエクスポート（テスト用）">
+                <Button
+                  variant="outlined"
+                  startIcon={<DataObjectIcon />}
+                  onClick={exportJson}
+                  sx={{
+                    borderColor: '#FF9800',
+                    color: '#FF9800',
+                    '&:hover': { borderColor: '#FFB74D', bgcolor: 'rgba(255, 152, 0, 0.1)' },
+                  }}
+                >
+                  JSON出力
+                </Button>
+              </Tooltip>
               <Button
                 variant="contained"
                 startIcon={<SaveIcon />}
@@ -423,7 +771,6 @@ function FlowBuilderInner() {
             </Box>
           </Box>
 
-          {/* React Flow キャンバス */}
           <Box ref={reactFlowWrapper} sx={{ flex: 1 }}>
             <ReactFlow
               nodes={nodes}
@@ -458,11 +805,24 @@ function FlowBuilderInner() {
                   </Alert>
                 )}
               </Panel>
+              <Panel position="bottom-center">
+                <Box sx={{ display: 'flex', gap: 1, p: 1, bgcolor: 'rgba(22, 33, 62, 0.9)', borderRadius: 1 }}>
+                  <Chip
+                    label={`${nodes.length} ノード`}
+                    size="small"
+                    sx={{ bgcolor: 'rgba(144, 202, 249, 0.2)', color: '#90CAF9' }}
+                  />
+                  <Chip
+                    label={`${edges.length} エッジ`}
+                    size="small"
+                    sx={{ bgcolor: 'rgba(233, 69, 96, 0.2)', color: '#e94560' }}
+                  />
+                </Box>
+              </Panel>
             </ReactFlow>
           </Box>
         </Box>
 
-        {/* 保存ダイアログ */}
         <Dialog open={saveDialogOpen} onClose={() => setSaveDialogOpen(false)}>
           <DialogTitle>フローを保存</DialogTitle>
           <DialogContent>
@@ -483,7 +843,50 @@ function FlowBuilderInner() {
           </DialogActions>
         </Dialog>
 
-        {/* Snackbar */}
+        <Dialog
+          open={jsonDialogOpen}
+          onClose={() => setJsonDialogOpen(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <DataObjectIcon sx={{ color: '#FF9800' }} />
+            Flowise形式 JSON出力（テスト用）
+          </DialogTitle>
+          <DialogContent>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              このJSONはFlowise形式に準拠しています。Flowiseにインポートして使用できます。
+            </Alert>
+            <TextField
+              multiline
+              fullWidth
+              rows={20}
+              value={exportedJson}
+              InputProps={{
+                readOnly: true,
+                sx: { fontFamily: 'monospace', fontSize: '0.85rem' },
+              }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setJsonDialogOpen(false)}>閉じる</Button>
+            <Button
+              onClick={copyJsonToClipboard}
+              startIcon={<DataObjectIcon />}
+              variant="outlined"
+            >
+              コピー
+            </Button>
+            <Button
+              onClick={downloadJson}
+              startIcon={<DownloadIcon />}
+              variant="contained"
+            >
+              ダウンロード
+            </Button>
+          </DialogActions>
+        </Dialog>
+
         <Snackbar
           open={snackbar.open}
           autoHideDuration={3000}
@@ -494,10 +897,8 @@ function FlowBuilderInner() {
     );
   }
 
-  // 一覧表示モード
   return (
     <Box sx={{ height: '100%', display: 'flex', bgcolor: '#1a1a2e' }}>
-      {/* 左サイドバー - フロー一覧 */}
       <Paper
         sx={{
           width: 320,
@@ -518,7 +919,7 @@ function FlowBuilderInner() {
             フロー一覧
           </Typography>
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
-            ローカルストレージに保存
+            Flowise形式対応
           </Typography>
         </Box>
 
@@ -632,7 +1033,6 @@ function FlowBuilderInner() {
         </Box>
       </Paper>
 
-      {/* メインエリア - ウェルカム画面 */}
       <Box
         sx={{
           flex: 1,
@@ -647,7 +1047,7 @@ function FlowBuilderInner() {
           severity="success"
           sx={{ mb: 2, bgcolor: 'rgba(76, 175, 80, 0.1)', color: '#4CAF50' }}
         >
-          フロービルダー準備完了 - {flows.length}個のフロー
+          フロービルダー準備完了 - {flows.length}個のフロー（Flowise形式対応）
         </Alert>
 
         <Box sx={{ textAlign: 'center', maxWidth: 500 }}>
@@ -655,12 +1055,11 @@ function FlowBuilderInner() {
           <Typography variant="h5" sx={{ color: '#fff', mb: 2, fontWeight: 600 }}>
             OwlAgent フロービルダー
           </Typography>
-          <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.6)', mb: 4 }}>
-            左のサイドバーからフローを選択するか、
-            新規作成ボタンをクリックしてフローを作成してください。
+          <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+            Flowise形式に準拠したノード・エッジ構造でフローを作成できます。
           </Typography>
           <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.4)', mb: 4 }}>
-            フローはブラウザのローカルストレージに保存されます。
+            作成したフローは「JSON出力」ボタンでFlowise形式のJSONとしてエクスポートできます。
           </Typography>
 
           <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -677,7 +1076,6 @@ function FlowBuilderInner() {
         </Box>
       </Box>
 
-      {/* 削除確認ダイアログ */}
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
         <DialogTitle>フローを削除</DialogTitle>
         <DialogContent>
@@ -691,7 +1089,6 @@ function FlowBuilderInner() {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={3000}

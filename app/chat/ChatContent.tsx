@@ -432,7 +432,7 @@ export default function ChatContent() {
             fullWidth
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyDown}
             placeholder="メッセージを入力..."
             variant="outlined"
             size="small"
