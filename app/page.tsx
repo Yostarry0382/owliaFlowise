@@ -7,6 +7,7 @@ import BuildIcon from '@mui/icons-material/Build';
 import FolderIcon from '@mui/icons-material/Folder';
 import StorefrontIcon from '@mui/icons-material/Storefront';
 import ChatIcon from '@mui/icons-material/Chat';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { useRouter } from 'next/navigation';
 
 const UnifiedFlowBuilder = dynamic(() => import('./components/UnifiedFlowBuilder'), {
@@ -127,6 +128,22 @@ export default function Home() {
                 <ChatIcon />
               </IconButton>
             </Tooltip>
+            <Button
+              variant="outlined"
+              startIcon={<SmartToyIcon />}
+              onClick={() => router.push('/agent-canvas')}
+              sx={{
+                color: '#90CAF9',
+                borderColor: '#90CAF9',
+                fontWeight: 600,
+                '&:hover': {
+                  borderColor: '#64B5F6',
+                  backgroundColor: 'rgba(144, 202, 249, 0.1)',
+                },
+              }}
+            >
+              エージェント作成
+            </Button>
             <Button
               variant="contained"
               startIcon={<StorefrontIcon />}
