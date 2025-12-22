@@ -28,17 +28,16 @@ import {
 import SaveIcon from '@mui/icons-material/Save';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ChatIcon from '@mui/icons-material/Chat';
-import FolderIcon from '@mui/icons-material/Folder';
-import StorefrontIcon from '@mui/icons-material/Storefront';
-
-import NodePalette from './agent-builder/components/NodePalette';
-import CustomNode, { CustomNodeData } from './agent-builder/components/CustomNode';
-import NodeConfigPanel from './agent-builder/components/NodeConfigPanel';
-import SaveAgentModal from './agent-builder/components/SaveAgentModal';
-import TestRunModal from './agent-builder/components/TestRunModal';
-import { getNodeDefinition } from './agent-builder/types/node-definitions';
-import { serializeFlowForFlowise } from './agent-builder/lib/flowise-converter';
+import HomeIcon from '@mui/icons-material/Home';
 import { useRouter } from 'next/navigation';
+
+import NodePalette from './components/NodePalette';
+import CustomNode, { CustomNodeData } from './components/CustomNode';
+import NodeConfigPanel from './components/NodeConfigPanel';
+import SaveAgentModal from './components/SaveAgentModal';
+import TestRunModal from './components/TestRunModal';
+import { getNodeDefinition } from './types/node-definitions';
+import { serializeFlowForFlowise } from './lib/flowise-converter';
 
 // 拡張されたノードデータ型（コールバック付き）
 interface ExtendedNodeData extends CustomNodeData {
@@ -55,7 +54,7 @@ const nodeTypes = {
 const initialNodes: Node<ExtendedNodeData>[] = [];
 const initialEdges: Edge[] = [];
 
-export default function Home() {
+export default function AgentBuilderPage() {
   const router = useRouter();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
@@ -330,27 +329,22 @@ export default function Home() {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Tooltip title="Back to Home">
+              <IconButton onClick={() => router.push('/')} sx={{ color: '#888' }}>
+                <HomeIcon />
+              </IconButton>
+            </Tooltip>
             <Typography
               variant="h6"
               sx={{
                 fontWeight: 700,
-                color: '#e94560',
+                color: '#fff',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 1,
               }}
             >
               <span style={{ fontSize: '1.3rem' }}>🦉</span>
-              OwliaFabrica
-            </Typography>
-            <Typography
-              sx={{
-                fontSize: '0.9rem',
-                color: '#888',
-                borderLeft: '1px solid #444',
-                pl: 2,
-              }}
-            >
               Agent Builder
             </Typography>
           </Box>
@@ -382,22 +376,6 @@ export default function Home() {
             >
               Save Agent
             </Button>
-            <Tooltip title="Saved Agents">
-              <IconButton
-                onClick={() => router.push('/agent-canvas')}
-                sx={{ color: '#90CAF9' }}
-              >
-                <FolderIcon />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Agent Store">
-              <IconButton
-                onClick={() => router.push('/store')}
-                sx={{ color: '#e94560' }}
-              >
-                <StorefrontIcon />
-              </IconButton>
-            </Tooltip>
             <Tooltip title="Go to Chat">
               <IconButton
                 onClick={() => router.push('/chat')}
@@ -490,7 +468,6 @@ export default function Home() {
               nodeData={selectedNode.data}
               onClose={handleCloseConfigPanel}
               onSave={handleSaveNodeConfig}
-              savedOwlAgents={savedOwlAgents}
             />
           )}
         </Box>

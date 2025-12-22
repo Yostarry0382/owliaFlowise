@@ -141,11 +141,13 @@ export async function POST(request: NextRequest) {
       try {
         const isConnected = await flowiseClient.healthCheck();
         if (isConnected) {
-          // FlowiseでChatflowを作成（空のフローで作成し、Flowiseで編集）
+          // FlowiseでChatflowを作成
+          // flowiseFlowDataがある場合はそれを使用、なければ空のフロー
+          const flowData = body.flowiseFlowData || '{"nodes":[],"edges":[]}';
           const chatflow = await flowiseClient.createChatflow({
             name: `OwlAgent: ${body.name}`,
-            flowData: '{"nodes":[],"edges":[]}',
-            deployed: false,
+            flowData,
+            deployed: true, // 変換済みフローがある場合はデプロイ
             category: 'OwliaFabrica',
           });
           owlAgent.flowiseChatflowId = chatflow.id;

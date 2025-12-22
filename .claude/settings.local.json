@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(npm run dev:*)",
-      "Bash(npm install)"
+      "Bash(npm install)",
+      "Bash(mkdir:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(cat:*)"
     ]
   }
 }

@@ -1,0 +1,72 @@
+{
+  "id": "c4cce1a2-b5dd-4ce0-bbed-a98df64955dd",
+  "name": "sample1",
+  "description": "a",
+  "iconStyle": "default",
+  "version": "1.0.0",
+  "flow": {
+    "nodes": [
+      {
+        "id": "start-1766370059464",
+        "type": "start",
+        "position": {
+          "x": -75,
+          "y": 135
+        },
+        "data": {
+          "label": "Start",
+          "type": "start",
+          "category": "flowControl",
+          "config": {}
+        }
+      },
+      {
+        "id": "azureChatOpenAI-1766370062023",
+        "type": "azureChatOpenAI",
+        "position": {
+          "x": 165,
+          "y": 135
+        },
+        "data": {
+          "label": "Azure ChatOpenAI",
+          "type": "azureChatOpenAI",
+          "category": "chatModels",
+          "config": {}
+        }
+      },
+      {
+        "id": "end-1766370078725",
+        "type": "end",
+        "position": {
+          "x": 420,
+          "y": 135
+        },
+        "data": {
+          "label": "End",
+          "type": "end",
+          "category": "flowControl",
+          "config": {}
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "reactflow__edge-start-1766370059464output-azureChatOpenAI-1766370062023input",
+        "source": "start-1766370059464",
+        "target": "azureChatOpenAI-1766370062023",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "reactflow__edge-azureChatOpenAI-1766370062023output-end-1766370078725input",
+        "source": "azureChatOpenAI-1766370062023",
+        "target": "end-1766370078725",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      }
+    ]
+  },
+  "createdAt": "2025-12-22T02:22:09.518Z",
+  "updatedAt": "2025-12-22T02:22:09.518Z",
+  "tags": []
+}
