@@ -206,6 +206,50 @@ export async function PUT(request: NextRequest) {
       updatedAt: new Date(),
     };
 
+    // Flowise同期処理
+    if (body.syncToFlowise) {
+      try {
+        const isConnected = await flowiseClient.healthCheck();
+        if (isConnected) {
+          const flowData = body.flowiseFlowData || '{"nodes":[],"edges":[]}';
+
+          if (existingOwlAgent.flowiseChatflowId) {
+            // 既存のChatflowを更新
+            try {
+              await flowiseClient.updateChatflow(existingOwlAgent.flowiseChatflowId, {
+                name: `OwlAgent: ${body.name || existingOwlAgent.name}`,
+                flowData,
+                deployed: true,
+              });
+              updatedOwlAgent.flowiseChatflowId = existingOwlAgent.flowiseChatflowId;
+            } catch (updateError) {
+              // 更新に失敗した場合（Chatflowが削除されている可能性）、新規作成を試みる
+              console.warn('Failed to update Flowise chatflow, creating new one:', updateError);
+              const chatflow = await flowiseClient.createChatflow({
+                name: `OwlAgent: ${body.name || existingOwlAgent.name}`,
+                flowData,
+                deployed: true,
+                category: 'OwliaFabrica',
+              });
+              updatedOwlAgent.flowiseChatflowId = chatflow.id;
+            }
+          } else {
+            // 新規Chatflowを作成
+            const chatflow = await flowiseClient.createChatflow({
+              name: `OwlAgent: ${body.name || existingOwlAgent.name}`,
+              flowData,
+              deployed: true,
+              category: 'OwliaFabrica',
+            });
+            updatedOwlAgent.flowiseChatflowId = chatflow.id;
+          }
+        }
+      } catch (syncError) {
+        console.warn('Failed to sync to Flowise:', syncError);
+        // Flowise同期に失敗しても、OwlAgentの更新は続行
+      }
+    }
+
     // Save updated Owl Agent
     await saveOwlAgent(updatedOwlAgent);
 

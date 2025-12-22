@@ -5,6 +5,8 @@ import { Typography, Button } from '@mui/material';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ChatIcon from '@mui/icons-material/Chat';
 import DeleteIcon from '@mui/icons-material/Delete';
+import EditNoteIcon from '@mui/icons-material/EditNote';
+import { useRouter } from 'next/navigation';
 
 // Type definitions
 type AbilityRank = 'S' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
@@ -83,11 +85,17 @@ const generateAbilities = (): AgentAbility[] => {
 };
 
 export default function SavedOwlsList() {
+  const router = useRouter();
   const [selectedOwl, setSelectedOwl] = useState<SavedOwl | null>(null);
   const [savedOwls, setSavedOwls] = useState<SavedOwl[]>([]);
   const [loading, setLoading] = useState(true);
 
   const flowiseUrl = process.env.NEXT_PUBLIC_FLOWISE_API_URL || 'http://localhost:3000';
+
+  // OwliaFabricaの編集画面に遷移
+  const handleEditInOwliaFabrica = (agentId: string) => {
+    router.push(`/agent-canvas/${agentId}`);
+  };
 
   // Fetch saved owls from API
   const fetchSavedOwls = async () => {
@@ -348,7 +356,16 @@ export default function SavedOwlsList() {
 
                 {/* Bottom Section - Action Buttons */}
                 <div className="mx-4 mb-4 p-3 rounded-xl" style={{ backgroundColor: '#0f3460', border: '1px solid #1a1a2e' }}>
-                  <div className="flex justify-center gap-4">
+                  <div className="flex justify-center gap-3 flex-wrap">
+                    <button
+                      onClick={() => handleEditInOwliaFabrica(selectedOwl.id)}
+                      className="px-6 py-2 rounded-full font-bold text-sm shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all flex items-center gap-1"
+                      style={{ backgroundColor: '#FF9800', color: '#fff' }}
+                    >
+                      <EditNoteIcon sx={{ fontSize: 16 }} />
+                      編集
+                    </button>
+
                     <button
                       onClick={() => handleOpenChat(selectedOwl.flowiseChatflowId)}
                       className="px-6 py-2 rounded-full font-bold text-sm shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all flex items-center gap-1"
@@ -364,7 +381,7 @@ export default function SavedOwlsList() {
                       style={{ backgroundColor: '#2196F3', color: '#fff' }}
                     >
                       <OpenInNewIcon sx={{ fontSize: 16 }} />
-                      Flowiseで編集
+                      Flowise
                     </button>
 
                     <button

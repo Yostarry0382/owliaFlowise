@@ -137,6 +137,10 @@ function convertConfigToFlowiseInputs(
       inputs.topP = config.topP ?? 1;
       inputs.frequencyPenalty = config.frequencyPenalty ?? 0;
       inputs.presencePenalty = config.presencePenalty ?? 0;
+      // システムメッセージを含める
+      if (config.systemMessage) {
+        inputs.systemMessage = config.systemMessage;
+      }
       break;
 
     case 'azureOpenAIEmbeddings':
@@ -242,6 +246,31 @@ export function convertNodeToFlowise(node: Node<CustomNodeData>): FlowiseNode {
     height: 150,
   };
 
+  // OwlAgentReference の場合は参照情報を追加
+  if (node.data.type === 'owlAgentReference') {
+    flowiseNode.data.inputs = flowiseNode.data.inputs || {};
+    // 参照先のOwlAgent情報を含める
+    if (node.data.agentId) {
+      flowiseNode.data.inputs.agentId = node.data.agentId;
+    }
+    if (node.data.agentName) {
+      flowiseNode.data.inputs.agentName = node.data.agentName;
+    }
+    // configに含まれる追加情報も含める
+    if (node.data.config?.agentId) {
+      flowiseNode.data.inputs.agentId = node.data.config.agentId;
+    }
+    if (node.data.config?.agentName) {
+      flowiseNode.data.inputs.agentName = node.data.config.agentName;
+    }
+    if (node.data.config?.inputMapping) {
+      flowiseNode.data.inputs.inputMapping = node.data.config.inputMapping;
+    }
+    if (node.data.config?.outputMapping) {
+      flowiseNode.data.inputs.outputMapping = node.data.config.outputMapping;
+    }
+  }
+
   // Credential情報を追加（API Keyなど）
   if (node.data.config) {
     const credentials: Record<string, string> = {};
@@ -295,18 +324,64 @@ export function convertEdgeToFlowise(edge: Edge): FlowiseEdge {
 }
 
 /**
+ * OwlAgentの内部フロー情報を展開した形式
+ */
+interface ExpandedOwlAgentInfo {
+  agentId: string;
+  agentName: string;
+  description?: string;
+  flow?: {
+    nodes: any[];
+    edges: any[];
+  };
+}
+
+/**
  * agent-builderのフロー全体をFlowise形式に変換
+ * @param nodes フローのノード
+ * @param edges フローのエッジ
+ * @param viewport ビューポート情報
+ * @param expandedOwlAgents OwlAgentの展開情報（オプション）
  */
 export function convertFlowToFlowise(
   nodes: Node<CustomNodeData>[],
   edges: Edge[],
-  viewport?: { x: number; y: number; zoom: number }
-): FlowiseFlowData {
-  return {
-    nodes: nodes.map(convertNodeToFlowise),
+  viewport?: { x: number; y: number; zoom: number },
+  expandedOwlAgents?: Map<string, ExpandedOwlAgentInfo>
+): FlowiseFlowData & { expandedOwlAgents?: Record<string, ExpandedOwlAgentInfo> } {
+  const flowiseNodes = nodes.map(convertNodeToFlowise);
+
+  // OwlAgentノードに展開情報を追加
+  if (expandedOwlAgents && expandedOwlAgents.size > 0) {
+    flowiseNodes.forEach((flowiseNode) => {
+      if (flowiseNode.data.type === 'chatflowTool' && flowiseNode.data.inputs?.agentId) {
+        const agentInfo = expandedOwlAgents.get(flowiseNode.data.inputs.agentId);
+        if (agentInfo) {
+          flowiseNode.data.inputs.expandedAgent = {
+            agentId: agentInfo.agentId,
+            agentName: agentInfo.agentName,
+            description: agentInfo.description,
+            // 内部フローのノード数とエッジ数を表示
+            nodeCount: agentInfo.flow?.nodes?.length || 0,
+            edgeCount: agentInfo.flow?.edges?.length || 0,
+          };
+        }
+      }
+    });
+  }
+
+  const result: FlowiseFlowData & { expandedOwlAgents?: Record<string, ExpandedOwlAgentInfo> } = {
+    nodes: flowiseNodes,
     edges: edges.map(convertEdgeToFlowise),
     viewport: viewport || { x: 0, y: 0, zoom: 1 },
   };
+
+  // 展開されたOwlAgent情報を別セクションとして追加
+  if (expandedOwlAgents && expandedOwlAgents.size > 0) {
+    result.expandedOwlAgents = Object.fromEntries(expandedOwlAgents);
+  }
+
+  return result;
 }
 
 /**

@@ -32,7 +32,12 @@ import KeyIcon from '@mui/icons-material/Key';
 import SettingsIcon from '@mui/icons-material/Settings';
 import LinkIcon from '@mui/icons-material/Link';
 import PersonIcon from '@mui/icons-material/Person';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import LightbulbIcon from '@mui/icons-material/Lightbulb';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { getNodeDefinition, NodeInputParam, NodeHandle } from '../types/node-definitions';
+import { getNodeReference } from '../types/node-references';
 import { CustomNodeData } from './CustomNode';
 
 interface SavedOwlAgent {
@@ -109,12 +114,26 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
     return categorizeInputs(nodeDefinition.inputs);
   }, [nodeDefinition]);
 
+  // nodeIdまたはnodeDataが変更されたらconfigとhumanReviewを更新
   useEffect(() => {
-    // デフォルト値を設定
+    setConfig(nodeData.config || {});
+    setHumanReview(nodeData.humanReview || {
+      enabled: false,
+      requiresApproval: true,
+      approvalMessage: '',
+      timeoutSeconds: 0,
+      allowEdit: true,
+    });
+  }, [nodeId, nodeData]);
+
+  // デフォルト値の設定（初期ロード時のみ）
+  useEffect(() => {
     if (nodeDefinition) {
+      // 既存の設定値にデフォルト値をマージ
       const defaults: Record<string, any> = {};
+      const currentConfig = nodeData.config || {};
       nodeDefinition.inputs.forEach((input) => {
-        if (input.default !== undefined && config[input.name] === undefined) {
+        if (input.default !== undefined && currentConfig[input.name] === undefined) {
           defaults[input.name] = input.default;
         }
       });
@@ -122,7 +141,7 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
         setConfig((prev) => ({ ...defaults, ...prev }));
       }
     }
-  }, [nodeDefinition]);
+  }, [nodeDefinition, nodeId, nodeData.config]);
 
   const handleConfigChange = (name: string, value: any) => {
     setConfig((prev) => ({ ...prev, [name]: value }));
@@ -837,6 +856,175 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
             </Box>
           </AccordionDetails>
         </Accordion>
+
+        {/* ノードリファレンス */}
+        {(() => {
+          const reference = getNodeReference(nodeData.type);
+          if (!reference) return null;
+
+          return (
+            <Accordion
+              sx={{
+                bgcolor: '#1a1a2e',
+                color: '#fff',
+                '&:before': { display: 'none' },
+                border: '1px solid #2d2d44',
+                borderRadius: 1,
+                mt: 1,
+              }}
+            >
+              <AccordionSummary
+                expandIcon={<ExpandMoreIcon sx={{ color: '#888' }} />}
+                sx={{
+                  '& .MuiAccordionSummary-content': {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                  },
+                }}
+              >
+                <MenuBookIcon sx={{ color: '#64B5F6', fontSize: 20 }} />
+                <Typography sx={{ fontWeight: 500 }}>ノードリファレンス</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {/* 説明 */}
+                  <Box>
+                    <Typography sx={{ color: '#ccc', fontSize: '0.85rem', lineHeight: 1.6 }}>
+                      {reference.description}
+                    </Typography>
+                  </Box>
+
+                  {/* 機能 */}
+                  {reference.features && reference.features.length > 0 && (
+                    <Box>
+                      <Typography
+                        sx={{
+                          color: '#81C784',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          mb: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                        }}
+                      >
+                        <CheckCircleOutlineIcon sx={{ fontSize: 16 }} />
+                        主な機能
+                      </Typography>
+                      <Box component="ul" sx={{ m: 0, pl: 2 }}>
+                        {reference.features.map((feature, idx) => (
+                          <Box
+                            component="li"
+                            key={idx}
+                            sx={{ color: '#aaa', fontSize: '0.8rem', mb: 0.5 }}
+                          >
+                            {feature}
+                          </Box>
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* ユースケース */}
+                  {reference.useCases && reference.useCases.length > 0 && (
+                    <Box>
+                      <Typography
+                        sx={{
+                          color: '#64B5F6',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          mb: 1,
+                        }}
+                      >
+                        使用例
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {reference.useCases.map((useCase, idx) => (
+                          <Chip
+                            key={idx}
+                            label={useCase}
+                            size="small"
+                            sx={{
+                              bgcolor: '#2d2d44',
+                              color: '#ccc',
+                              fontSize: '0.7rem',
+                              height: 24,
+                            }}
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* Tips */}
+                  {reference.tips && reference.tips.length > 0 && (
+                    <Box
+                      sx={{
+                        bgcolor: '#2a2a3d',
+                        borderRadius: 1,
+                        p: 1.5,
+                        border: '1px solid #FFB74D33',
+                      }}
+                    >
+                      <Typography
+                        sx={{
+                          color: '#FFB74D',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          mb: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                        }}
+                      >
+                        <LightbulbIcon sx={{ fontSize: 16 }} />
+                        Tips
+                      </Typography>
+                      <Box component="ul" sx={{ m: 0, pl: 2 }}>
+                        {reference.tips.map((tip, idx) => (
+                          <Box
+                            component="li"
+                            key={idx}
+                            sx={{ color: '#bbb', fontSize: '0.75rem', mb: 0.5 }}
+                          >
+                            {tip}
+                          </Box>
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* ドキュメントリンク */}
+                  {reference.docUrl && (
+                    <Box sx={{ mt: 1 }}>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        href={reference.docUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
+                        sx={{
+                          color: '#64B5F6',
+                          borderColor: '#64B5F6',
+                          fontSize: '0.75rem',
+                          textTransform: 'none',
+                          '&:hover': {
+                            borderColor: '#90CAF9',
+                            bgcolor: '#64B5F610',
+                          },
+                        }}
+                      >
+                        Flowise公式ドキュメント
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
+              </AccordionDetails>
+            </Accordion>
+          );
+        })()}
       </Box>
 
       {/* フッター */}

@@ -15,9 +15,13 @@ import {
   InputAdornment,
   Divider,
   Chip,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SearchIcon from '@mui/icons-material/Search';
+import EditIcon from '@mui/icons-material/Edit';
+import { useRouter } from 'next/navigation';
 import {
   NODE_CATEGORIES,
   ALL_NODE_DEFINITIONS,
@@ -32,8 +36,15 @@ interface NodePaletteProps {
 }
 
 export default function NodePalette({ savedOwlAgents = [], onDragStart }: NodePaletteProps) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<NodeCategory[]>(['chatModels', 'agents', 'chains']);
+
+  // OwlAgentを編集
+  const handleEditAgent = (agentId: string, event: React.MouseEvent) => {
+    event.stopPropagation(); // ドラッグを防止
+    router.push(`/agent-canvas/${agentId}`);
+  };
 
   const handleAccordionChange = (category: NodeCategory) => (_event: React.SyntheticEvent, isExpanded: boolean) => {
     setExpandedCategories((prev) =>
@@ -166,7 +177,7 @@ export default function NodePalette({ savedOwlAgents = [], onDragStart }: NodePa
                       sx: { color: '#fff', fontSize: '0.85rem' },
                     }}
                     secondaryTypographyProps={{
-                      sx: { color: '#888', fontSize: '0.7rem', noWrap: true },
+                      sx: { color: '#888', fontSize: '0.7rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
                     }}
                   />
                 </ListItem>
@@ -296,6 +307,23 @@ export default function NodePalette({ savedOwlAgents = [], onDragStart }: NodePa
                             cursor: 'grabbing',
                           },
                         }}
+                        secondaryAction={
+                          <Tooltip title="編集">
+                            <IconButton
+                              edge="end"
+                              size="small"
+                              onClick={(e) => handleEditAgent(agent.id, e)}
+                              sx={{
+                                color: '#FF9800',
+                                '&:hover': {
+                                  bgcolor: 'rgba(255, 152, 0, 0.2)',
+                                },
+                              }}
+                            >
+                              <EditIcon sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                        }
                       >
                         <ListItemIcon sx={{ minWidth: 28, fontSize: '1rem' }}>
                           🦉
@@ -313,6 +341,7 @@ export default function NodePalette({ savedOwlAgents = [], onDragStart }: NodePa
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
                               whiteSpace: 'nowrap',
+                              maxWidth: '120px',
                             },
                           }}
                         />

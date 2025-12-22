@@ -421,11 +421,7 @@ export default function AgentBuilderPage() {
               }}
               style={{ background: '#0f0f1a' }}
             >
-              <Controls
-                style={{
-                  button: { backgroundColor: '#252536', color: '#fff', border: '1px solid #3d3d54' },
-                }}
-              />
+              <Controls />
               <MiniMap
                 style={{
                   backgroundColor: '#1e1e2f',
@@ -464,10 +460,12 @@ export default function AgentBuilderPage() {
           {/* 右サイドバー: ノード設定パネル */}
           {showConfigPanel && selectedNode && (
             <NodeConfigPanel
+              key={`config-${selectedNode.id}-${JSON.stringify(selectedNode.data.config || {})}`}
               nodeId={selectedNode.id}
               nodeData={selectedNode.data}
               onClose={handleCloseConfigPanel}
               onSave={handleSaveNodeConfig}
+              savedOwlAgents={savedOwlAgents}
             />
           )}
         </Box>

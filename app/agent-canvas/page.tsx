@@ -11,7 +11,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Grid,
   Card,
   CardContent,
   CardActions,
@@ -171,9 +170,9 @@ export default function AgentCanvasPage() {
           </Button>
         </Paper>
       ) : (
-        <Grid container spacing={3}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' }, gap: 3 }}>
           {agents.map((agent) => (
-            <Grid item xs={12} sm={6} md={4} key={agent.id}>
+            <Box key={agent.id}>
               <Card>
                 <CardContent>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
@@ -197,18 +196,21 @@ export default function AgentCanvasPage() {
                   </Typography>
                 </CardContent>
                 <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
-                  <Box>
-                    <IconButton
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                      variant="outlined"
                       size="small"
+                      startIcon={<EditIcon />}
                       onClick={() => router.push(`/agent-canvas/${agent.id}`)}
-                      title="編集"
+                      color="primary"
                     >
-                      <EditIcon />
-                    </IconButton>
+                      編集
+                    </Button>
                     <IconButton
                       size="small"
                       onClick={() => handleDeleteAgent(agent.id)}
                       title="削除"
+                      color="error"
                     >
                       <DeleteIcon />
                     </IconButton>
@@ -223,9 +225,9 @@ export default function AgentCanvasPage() {
                   </Button>
                 </CardActions>
               </Card>
-            </Grid>
+            </Box>
           ))}
-        </Grid>
+        </Box>
       )}
 
       {/* Create Agent Dialog */}

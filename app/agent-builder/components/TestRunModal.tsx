@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -44,6 +44,17 @@ import {
   FlowiseExecutionResult,
 } from '../lib/flowise-converter';
 
+// OwlAgentの展開情報の型
+interface ExpandedOwlAgentInfo {
+  agentId: string;
+  agentName: string;
+  description?: string;
+  flow?: {
+    nodes: any[];
+    edges: any[];
+  };
+}
+
 interface TestRunModalProps {
   open: boolean;
   onClose: () => void;
@@ -71,16 +82,65 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
   const [sessionId] = useState(() => `test-${Date.now()}`);
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<FlowiseExecutionResult | null>(null);
+  const [expandedOwlAgents, setExpandedOwlAgents] = useState<Map<string, ExpandedOwlAgentInfo>>(new Map());
+  const [isLoadingAgents, setIsLoadingAgents] = useState(false);
+
+  // OwlAgentノードを検出
+  const owlAgentNodes = useMemo(() => {
+    return nodes.filter(
+      (n) => n.data.type === 'owlAgentReference' && (n.data.agentId || n.data.config?.agentId)
+    );
+  }, [nodes]);
+
+  // OwlAgentの内部情報を取得
+  const fetchOwlAgentDetails = useCallback(async () => {
+    if (owlAgentNodes.length === 0) return;
+
+    setIsLoadingAgents(true);
+    const agentMap = new Map<string, ExpandedOwlAgentInfo>();
+
+    try {
+      for (const node of owlAgentNodes) {
+        const agentId = node.data.agentId || node.data.config?.agentId;
+        if (!agentId || agentMap.has(agentId)) continue;
+
+        try {
+          const response = await fetch(`/api/owlagents?id=${agentId}`);
+          if (response.ok) {
+            const agentData = await response.json();
+            agentMap.set(agentId, {
+              agentId: agentData.id,
+              agentName: agentData.name,
+              description: agentData.description,
+              flow: agentData.flow,
+            });
+          }
+        } catch (error) {
+          console.error(`Failed to fetch OwlAgent ${agentId}:`, error);
+        }
+      }
+      setExpandedOwlAgents(agentMap);
+    } finally {
+      setIsLoadingAgents(false);
+    }
+  }, [owlAgentNodes]);
+
+  // モーダルを開いたときにOwlAgentの情報を取得
+  useEffect(() => {
+    if (open && owlAgentNodes.length > 0) {
+      fetchOwlAgentDetails();
+    }
+  }, [open, owlAgentNodes.length, fetchOwlAgentDetails]);
 
   // バリデーション結果
   const validation = useMemo(() => {
     return validateFlowForFlowise(nodes, edges);
   }, [nodes, edges]);
 
-  // Flowise形式に変換されたフローデータ
+  // Flowise形式に変換されたフローデータ（OwlAgentの展開情報を含む）
   const flowiseData = useMemo(() => {
-    return convertFlowToFlowise(nodes, edges);
-  }, [nodes, edges]);
+    return convertFlowToFlowise(nodes, edges, undefined, expandedOwlAgents);
+  }, [nodes, edges, expandedOwlAgents]);
 
   // モーダルを開くたびにリセット
   useEffect(() => {
@@ -117,6 +177,7 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
     setInput('');
     setResult(null);
     setTabValue(0);
+    setExpandedOwlAgents(new Map());
     onClose();
   };
 
@@ -268,9 +329,39 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
 
         {/* Flow Data Tab */}
         <TabPanel value={tabValue} index={1}>
-          <Typography sx={{ color: '#888', fontSize: '0.85rem', mb: 1 }}>
-            Flowise-Compatible Flow Data (JSON)
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <Typography sx={{ color: '#888', fontSize: '0.85rem' }}>
+              Flowise-Compatible Flow Data (JSON)
+            </Typography>
+            {isLoadingAgents && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <CircularProgress size={14} sx={{ color: '#6366f1' }} />
+                <Typography sx={{ color: '#6366f1', fontSize: '0.75rem' }}>
+                  OwlAgent情報を読み込み中...
+                </Typography>
+              </Box>
+            )}
+          </Box>
+
+          {/* OwlAgentノードがある場合の情報表示 */}
+          {owlAgentNodes.length > 0 && (
+            <Alert
+              severity="info"
+              sx={{
+                mb: 2,
+                bgcolor: '#1a2744',
+                color: '#90caf9',
+                '& .MuiAlert-icon': { color: '#90caf9' },
+              }}
+            >
+              <Typography sx={{ fontSize: '0.8rem' }}>
+                このフローには {owlAgentNodes.length} 個のOwlAgentノードが含まれています。
+                {expandedOwlAgents.size > 0 &&
+                  ` 内部フロー情報は「expandedOwlAgents」セクションに展開されています。`}
+              </Typography>
+            </Alert>
+          )}
+
           <Paper
             sx={{
               bgcolor: '#252536',
