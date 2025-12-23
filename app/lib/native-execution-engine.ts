@@ -433,18 +433,43 @@ const defaultExecutor: NodeExecutor = {
 
 // ノードタイプとエグゼキューターのマッピング
 const executorMap: Record<string, NodeExecutor> = {
+  // Flow Control
   start: startExecutor,
   end: endExecutor,
-  promptTemplate: promptTemplateExecutor,
+  condition: conditionExecutor,
+  forEach: forEachExecutor,
+  humanReview: humanReviewExecutor,
+
+  // LLM / Chat Models - すべてのバリエーションをサポート
+  llm: llmExecutor,
   azureChatOpenAI: llmExecutor,
   chatOpenAI: llmExecutor,
   openAI: llmExecutor,
+  openai: llmExecutor,
+  chatModel: llmExecutor,
+  chatmodel: llmExecutor,
+  gpt: llmExecutor,
+  claude: llmExecutor,
+  gemini: llmExecutor,
+
+  // Prompt
+  promptTemplate: promptTemplateExecutor,
+  prompt: promptTemplateExecutor,
+  prompttemplate: promptTemplateExecutor,
+
+  // Vector Store
   vectorstore: vectorStoreExecutor,
+  vectorStore: vectorStoreExecutor,
+
+  // Memory
   memory: memoryExecutor,
-  humanReview: humanReviewExecutor,
-  condition: conditionExecutor,
+
+  // Tools
   tool: toolExecutor,
-  forEach: forEachExecutor,
+
+  // Category-based fallbacks
+  chatModels: llmExecutor,
+  flowControl: defaultExecutor,
 };
 
 // メインの実行エンジン
@@ -477,8 +502,28 @@ export async function executeFlow(
 
     // 各ノードを順番に実行
     for (const node of sortedNodes) {
-      const nodeType = node.data.type || node.type;
-      const executor = executorMap[nodeType] || defaultExecutor;
+      // 複数のタイプ候補をチェック（data.type, type, category順）
+      const typeVariants = [
+        node.data.type,
+        node.type,
+        node.data.category,
+      ].filter(Boolean);
+
+      let executor: NodeExecutor = defaultExecutor;
+      let matchedType = 'default';
+
+      for (const t of typeVariants) {
+        if (executorMap[t]) {
+          executor = executorMap[t];
+          matchedType = t;
+          break;
+        }
+      }
+
+      // デバッグ用: どのタイプでマッチしたかログ出力
+      if (matchedType === 'default') {
+        context.logs.push(`[DEBUG] ${node.data.label}: タイプ ${typeVariants.join('/')} はマッピングなし、パススルー`);
+      }
 
       // 入力を収集
       const inputs = collectNodeInputs(node, edges, context.nodeOutputs);
