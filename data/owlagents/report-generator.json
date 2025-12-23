@@ -9,34 +9,32 @@
       {
         "id": "start-report",
         "type": "start",
-        "position": { "x": 0, "y": 150 },
+        "position": {
+          "x": 0,
+          "y": 150
+        },
         "data": {
           "label": "レポート要件入力",
           "type": "start",
           "category": "flowControl",
           "config": {
-            "inputFields": ["documentType", "purpose", "targetAudience", "rawData", "keyPoints"]
-          }
-        }
-      },
-      {
-        "id": "vectorstore-templates",
-        "type": "custom",
-        "position": { "x": 200, "y": 50 },
-        "data": {
-          "label": "ドキュメントテンプレートDB",
-          "type": "vectorstore",
-          "category": "vectorstore",
-          "config": {
-            "provider": "pinecone",
-            "indexName": "document-templates"
+            "inputFields": [
+              "documentType",
+              "purpose",
+              "targetAudience",
+              "rawData",
+              "keyPoints"
+            ]
           }
         }
       },
       {
         "id": "llm-structure",
         "type": "azureChatOpenAI",
-        "position": { "x": 400, "y": 150 },
+        "position": {
+          "x": 400,
+          "y": 150
+        },
         "data": {
           "label": "構成・アウトライン作成",
           "type": "azureChatOpenAI",
@@ -48,29 +46,12 @@
         }
       },
       {
-        "id": "human-review-structure",
-        "type": "custom",
-        "position": { "x": 600, "y": 50 },
-        "data": {
-          "label": "構成確認",
-          "type": "humanReview",
-          "category": "flowControl",
-          "config": {
-            "enabled": true,
-            "message": "アウトラインを確認してください"
-          },
-          "humanReview": {
-            "enabled": true,
-            "requiresApproval": true,
-            "approvalMessage": "ドキュメントの構成を確認し、必要に応じて修正してください",
-            "allowEdit": true
-          }
-        }
-      },
-      {
         "id": "llm-content",
         "type": "azureChatOpenAI",
-        "position": { "x": 800, "y": 150 },
+        "position": {
+          "x": 800,
+          "y": 150
+        },
         "data": {
           "label": "本文作成",
           "type": "azureChatOpenAI",
@@ -84,7 +65,10 @@
       {
         "id": "llm-summary",
         "type": "azureChatOpenAI",
-        "position": { "x": 1000, "y": 50 },
+        "position": {
+          "x": 1020,
+          "y": 0
+        },
         "data": {
           "label": "要約・エグゼクティブサマリー",
           "type": "azureChatOpenAI",
@@ -98,7 +82,10 @@
       {
         "id": "llm-format",
         "type": "azureChatOpenAI",
-        "position": { "x": 1200, "y": 150 },
+        "position": {
+          "x": 1200,
+          "y": 150
+        },
         "data": {
           "label": "最終フォーマット調整",
           "type": "azureChatOpenAI",
@@ -112,7 +99,10 @@
       {
         "id": "end-report",
         "type": "end",
-        "position": { "x": 1400, "y": 150 },
+        "position": {
+          "x": 1575,
+          "y": 225
+        },
         "data": {
           "label": "ドキュメント出力",
           "type": "end",
@@ -123,37 +113,9 @@
     ],
     "edges": [
       {
-        "id": "edge-start-vector",
-        "source": "start-report",
-        "target": "vectorstore-templates",
-        "sourceHandle": "output",
-        "targetHandle": "input"
-      },
-      {
         "id": "edge-start-structure",
         "source": "start-report",
         "target": "llm-structure",
-        "sourceHandle": "output",
-        "targetHandle": "input"
-      },
-      {
-        "id": "edge-vector-structure",
-        "source": "vectorstore-templates",
-        "target": "llm-structure",
-        "sourceHandle": "output",
-        "targetHandle": "context"
-      },
-      {
-        "id": "edge-structure-review",
-        "source": "llm-structure",
-        "target": "human-review-structure",
-        "sourceHandle": "output",
-        "targetHandle": "input"
-      },
-      {
-        "id": "edge-review-content",
-        "source": "human-review-structure",
-        "target": "llm-content",
         "sourceHandle": "output",
         "targetHandle": "input"
       },
@@ -184,11 +146,26 @@
         "target": "end-report",
         "sourceHandle": "output",
         "targetHandle": "input"
+      },
+      {
+        "id": "reactflow__edge-llm-structureoutput-llm-contentinput",
+        "source": "llm-structure",
+        "target": "llm-content",
+        "sourceHandle": "output",
+        "targetHandle": "input"
       }
-    ],
-    "viewport": { "x": 50, "y": 200, "zoom": 0.8 }
+    ]
   },
-  "tags": ["業務効率化", "レポート", "ドキュメント", "自動化", "ビジネス文書", "報告書"],
+  "tags": [
+    "業務効率化",
+    "レポート",
+    "ドキュメント",
+    "自動化",
+    "ビジネス文書",
+    "報告書"
+  ],
   "createdAt": "2025-12-22T10:00:00.000Z",
-  "updatedAt": "2025-12-22T10:00:00.000Z"
+  "updatedAt": "2025-12-23T05:09:29.082Z",
+  "syncToFlowise": true,
+  "flowiseFlowData": "{\"nodes\":[{\"id\":\"start-report\",\"position\":{\"x\":0,\"y\":150},\"type\":\"customNode\",\"data\":{\"id\":\"start-report\",\"label\":\"レポート要件入力\",\"name\":\"start\",\"type\":\"start\",\"baseClasses\":[\"Unknown\"],\"category\":\"flowControl\",\"description\":\"フローの開始地点。ユーザー入力を受け取り、後続のノードに渡します。\",\"inputs\":{\"inputFields\":[\"documentType\",\"purpose\",\"targetAudience\",\"rawData\",\"keyPoints\"]},\"outputs\":{},\"inputAnchors\":[],\"outputAnchors\":[{\"label\":\"Output\",\"name\":\"output\",\"type\":\"any\"}]},\"width\":300,\"height\":150},{\"id\":\"llm-structure\",\"position\":{\"x\":400,\"y\":150},\"type\":\"customNode\",\"data\":{\"id\":\"llm-structure\",\"label\":\"構成・アウトライン作成\",\"name\":\"azureChatOpenAI\",\"type\":\"azureChatOpenAI\",\"baseClasses\":[\"AzureChatOpenAI\",\"BaseChatModel\",\"BaseLanguageModel\"],\"category\":\"chatModels\",\"description\":\"Azure OpenAI Serviceを使用したチャットモデル。GPT-4、GPT-4o、GPT-3.5 Turboなどのモデルを利用可能。\",\"inputs\":{\"temperature\":0.4,\"maxTokens\":2000,\"topP\":1,\"frequencyPenalty\":0,\"presencePenalty\":0,\"systemMessage\":\"あなたはビジネスドキュメント作成の専門家です。与えられた要件から以下を作成してください：\\n1. ドキュメントの目的と対象読者の分析\\n2. 章立てと各章の概要\\n3. 含めるべきデータやグラフの提案\\n4. 想定される質問とその回答案\"},\"outputs\":{},\"inputAnchors\":[{\"label\":\"Input\",\"name\":\"input\",\"type\":\"any\",\"optional\":true}],\"outputAnchors\":[{\"label\":\"Output\",\"name\":\"output\",\"type\":\"any\"},{\"label\":\"Chat Model\",\"name\":\"chatModel\",\"type\":\"chatModel\"}]},\"width\":300,\"height\":150},{\"id\":\"llm-content\",\"position\":{\"x\":800,\"y\":150},\"type\":\"customNode\",\"data\":{\"id\":\"llm-content\",\"label\":\"本文作成\",\"name\":\"azureChatOpenAI\",\"type\":\"azureChatOpenAI\",\"baseClasses\":[\"AzureChatOpenAI\",\"BaseChatModel\",\"BaseLanguageModel\"],\"category\":\"chatModels\",\"description\":\"Azure OpenAI Serviceを使用したチャットモデル。GPT-4、GPT-4o、GPT-3.5 Turboなどのモデルを利用可能。\",\"inputs\":{\"temperature\":0.5,\"maxTokens\":2000,\"topP\":1,\"frequencyPenalty\":0,\"presencePenalty\":0,\"systemMessage\":\"承認された構成に基づいて、各セクションの本文を作成してください：\\n- 対象読者に適した言葉遣いで\\n- データは表やリストで分かりやすく\\n- 重要なポイントは強調表示\\n- 論理的な流れを維持\"},\"outputs\":{},\"inputAnchors\":[{\"label\":\"Input\",\"name\":\"input\",\"type\":\"any\",\"optional\":true}],\"outputAnchors\":[{\"label\":\"Output\",\"name\":\"output\",\"type\":\"any\"},{\"label\":\"Chat Model\",\"name\":\"chatModel\",\"type\":\"chatModel\"}]},\"width\":300,\"height\":150},{\"id\":\"llm-summary\",\"position\":{\"x\":1020,\"y\":0},\"type\":\"customNode\",\"data\":{\"id\":\"llm-summary\",\"label\":\"要約・エグゼクティブサマリー\",\"name\":\"azureChatOpenAI\",\"type\":\"azureChatOpenAI\",\"baseClasses\":[\"AzureChatOpenAI\",\"BaseChatModel\",\"BaseLanguageModel\"],\"category\":\"chatModels\",\"description\":\"Azure OpenAI Serviceを使用したチャットモデル。GPT-4、GPT-4o、GPT-3.5 Turboなどのモデルを利用可能。\",\"inputs\":{\"temperature\":0.3,\"maxTokens\":2000,\"topP\":1,\"frequencyPenalty\":0,\"presencePenalty\":0,\"systemMessage\":\"作成したドキュメントから以下を生成してください：\\n1. エグゼクティブサマリー（1ページ以内）\\n2. 主要なポイント3-5点\\n3. 結論と次のステップ\"},\"outputs\":{},\"inputAnchors\":[{\"label\":\"Input\",\"name\":\"input\",\"type\":\"any\",\"optional\":true}],\"outputAnchors\":[{\"label\":\"Output\",\"name\":\"output\",\"type\":\"any\"},{\"label\":\"Chat Model\",\"name\":\"chatModel\",\"type\":\"chatModel\"}]},\"width\":300,\"height\":150},{\"id\":\"llm-format\",\"position\":{\"x\":1200,\"y\":150},\"type\":\"customNode\",\"data\":{\"id\":\"llm-format\",\"label\":\"最終フォーマット調整\",\"name\":\"azureChatOpenAI\",\"type\":\"azureChatOpenAI\",\"baseClasses\":[\"AzureChatOpenAI\",\"BaseChatModel\",\"BaseLanguageModel\"],\"category\":\"chatModels\",\"description\":\"Azure OpenAI Serviceを使用したチャットモデル。GPT-4、GPT-4o、GPT-3.5 Turboなどのモデルを利用可能。\",\"inputs\":{\"temperature\":0.2,\"maxTokens\":2000,\"topP\":1,\"frequencyPenalty\":0,\"presencePenalty\":0,\"systemMessage\":\"ドキュメント全体を最終チェックし、以下を確認・調整してください：\\n1. フォーマットの一貫性\\n2. 目次の生成\\n3. 参照の整理\\n4. 誤字脱字のチェック\\nMarkdown形式で出力してください。\"},\"outputs\":{},\"inputAnchors\":[{\"label\":\"Input\",\"name\":\"input\",\"type\":\"any\",\"optional\":true}],\"outputAnchors\":[{\"label\":\"Output\",\"name\":\"output\",\"type\":\"any\"},{\"label\":\"Chat Model\",\"name\":\"chatModel\",\"type\":\"chatModel\"}]},\"width\":300,\"height\":150},{\"id\":\"end-report\",\"position\":{\"x\":1575,\"y\":225},\"type\":\"customNode\",\"data\":{\"id\":\"end-report\",\"label\":\"ドキュメント出力\",\"name\":\"end\",\"type\":\"end\",\"baseClasses\":[\"Unknown\"],\"category\":\"flowControl\",\"description\":\"フローの終了地点。最終結果を出力します。\",\"inputs\":{},\"outputs\":{},\"inputAnchors\":[{\"label\":\"Input\",\"name\":\"input\",\"type\":\"any\",\"optional\":true}],\"outputAnchors\":[]},\"width\":300,\"height\":150}],\"edges\":[{\"id\":\"edge-start-structure\",\"source\":\"start-report\",\"sourceHandle\":\"output\",\"target\":\"llm-structure\",\"targetHandle\":\"input\",\"type\":\"buttonedge\"},{\"id\":\"edge-content-summary\",\"source\":\"llm-content\",\"sourceHandle\":\"output\",\"target\":\"llm-summary\",\"targetHandle\":\"input\",\"type\":\"buttonedge\"},{\"id\":\"edge-content-format\",\"source\":\"llm-content\",\"sourceHandle\":\"output\",\"target\":\"llm-format\",\"targetHandle\":\"input\",\"type\":\"buttonedge\"},{\"id\":\"edge-summary-format\",\"source\":\"llm-summary\",\"sourceHandle\":\"output\",\"target\":\"llm-format\",\"targetHandle\":\"summary\",\"type\":\"buttonedge\"},{\"id\":\"edge-format-end\",\"source\":\"llm-format\",\"sourceHandle\":\"output\",\"target\":\"end-report\",\"targetHandle\":\"input\",\"type\":\"buttonedge\"},{\"id\":\"reactflow__edge-llm-structureoutput-llm-contentinput\",\"source\":\"llm-structure\",\"sourceHandle\":\"output\",\"target\":\"llm-content\",\"targetHandle\":\"input\",\"type\":\"buttonedge\"}],\"viewport\":{\"x\":0,\"y\":0,\"zoom\":1}}"
 }

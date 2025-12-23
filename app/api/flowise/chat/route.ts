@@ -21,10 +21,13 @@ export async function POST(request: NextRequest) {
     const targetChatflowId = chatflowId || FLOWISE_CHATFLOW_ID;
 
     if (!targetChatflowId) {
-      return NextResponse.json(
-        { error: 'Flowise chatflow ID is not configured' },
-        { status: 500 }
-      );
+      // Chatflow IDが未設定の場合は、モック応答を返す
+      return NextResponse.json({
+        message: 'Flowise chatflow IDが設定されていません。.env.localでFLOWISE_DEFAULT_CHATFLOW_IDを設定するか、Flowiseでchatflowを作成してください。',
+        sessionId: sessionId || uuidv4(),
+        isMockResponse: true,
+        hint: 'http://localhost:3001 でFlowiseにアクセスし、chatflowを作成してください。'
+      });
     }
 
     const flowiseClient = new FlowiseClient({
@@ -54,8 +57,21 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error in chat API:', error);
+
+    // より詳細なエラー情報を返す
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const isConnectionError = errorMessage.includes('fetch') ||
+      errorMessage.includes('ECONNREFUSED') ||
+      errorMessage.includes('Network');
+
     return NextResponse.json(
-      { error: 'Failed to process chat message' },
+      {
+        error: 'Failed to process chat message',
+        details: errorMessage,
+        hint: isConnectionError
+          ? `Flowise server may not be running. Check if it's available at ${FLOWISE_API_URL}`
+          : 'Check Flowise server logs for more details',
+      },
       { status: 500 }
     );
   }

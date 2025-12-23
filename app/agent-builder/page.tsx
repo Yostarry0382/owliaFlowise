@@ -33,6 +33,7 @@ import { useRouter } from 'next/navigation';
 
 import NodePalette from './components/NodePalette';
 import CustomNode, { CustomNodeData } from './components/CustomNode';
+import ButtonEdge from './components/ButtonEdge';
 import NodeConfigPanel from './components/NodeConfigPanel';
 import SaveAgentModal from './components/SaveAgentModal';
 import TestRunModal from './components/TestRunModal';
@@ -45,9 +46,14 @@ interface ExtendedNodeData extends CustomNodeData {
   onDelete?: (nodeId: string) => void;
 }
 
-// カスタムノードタイプの登録
+// カスタムノードタイプの登録（コンポーネント外で定義してメモ化警告を回避）
 const nodeTypes = {
   custom: CustomNode,
+};
+
+// カスタムエッジタイプの登録（Flowise互換性のため）
+const edgeTypes = {
+  buttonedge: ButtonEdge,
 };
 
 // 初期ノード
@@ -411,6 +417,7 @@ export default function AgentBuilderPage() {
               onNodeClick={onNodeClick}
               onNodeDoubleClick={onNodeDoubleClick}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               fitView
               snapToGrid
               snapGrid={[15, 15]}

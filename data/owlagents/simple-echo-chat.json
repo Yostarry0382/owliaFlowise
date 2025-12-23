@@ -1,0 +1,103 @@
+{
+  "id": "simple-echo-chat",
+  "name": "シンプルエコーチャット",
+  "description": "LLM APIを使用しないシンプルなチャットツール。ユーザーの入力をそのまま返すエコー機能と、基本的なルールベース応答を提供します。API接続テストやデバッグ用途に最適です。",
+  "iconStyle": "green",
+  "version": "1.0.0",
+  "flow": {
+    "nodes": [
+      {
+        "id": "start-echo",
+        "type": "start",
+        "position": { "x": 0, "y": 200 },
+        "data": {
+          "id": "start-echo",
+          "label": "入力受付",
+          "name": "start",
+          "type": "start",
+          "baseClasses": ["Start"],
+          "category": "flowControl",
+          "description": "ユーザー入力を受け取る開始ノード",
+          "inputs": {
+            "inputFields": ["userMessage"]
+          },
+          "outputs": {},
+          "inputAnchors": [],
+          "outputAnchors": [
+            { "label": "Output", "name": "output", "type": "any" }
+          ]
+        }
+      },
+      {
+        "id": "transform-process",
+        "type": "customTool",
+        "position": { "x": 300, "y": 200 },
+        "data": {
+          "id": "transform-process",
+          "label": "テキスト処理",
+          "name": "customTool",
+          "type": "customTool",
+          "baseClasses": ["CustomTool", "Tool"],
+          "category": "tools",
+          "description": "ルールベースのテキスト処理（LLM不使用）",
+          "inputs": {
+            "toolName": "echoProcessor",
+            "toolDescription": "ルールベースでユーザー入力を処理します",
+            "jsCode": "const input = (typeof data === 'string' ? data : data?.userMessage) || '';\nconst timestamp = new Date().toLocaleString('ja-JP');\nlet response = '';\nif (input.toLowerCase().includes('hello') || input.includes('こんにちは')) {\n  response = 'こんにちは！お元気ですか？';\n} else if (input.toLowerCase().includes('help') || input.includes('ヘルプ')) {\n  response = '【ヘルプ】\\nこのエージェントはLLMを使用しません。\\n- 「こんにちは」→ 挨拶を返します\\n- 「時間」→ 現在時刻を返します\\n- 「計算 1+2」→ 簡単な計算をします\\n- その他 → 入力をエコーします';\n} else if (input.includes('時間') || input.includes('time')) {\n  response = '現在の時刻: ' + timestamp;\n} else if (input.startsWith('計算 ') || input.startsWith('calc ')) {\n  try {\n    const expr = input.replace(/^(計算|calc)\\s+/, '');\n    const safeExpr = expr.replace(/[^0-9+\\-*/().\\s]/g, '');\n    const result = Function('return ' + safeExpr)();\n    response = '計算結果: ' + expr + ' = ' + result;\n  } catch (e) {\n    response = '計算できませんでした。例: 計算 1+2*3';\n  }\n} else {\n  response = '[エコー] ' + input;\n}\nreturn { response: response, timestamp: timestamp, originalInput: input };"
+          },
+          "outputs": {},
+          "inputAnchors": [
+            { "label": "Input", "name": "input", "type": "any", "optional": true }
+          ],
+          "outputAnchors": [
+            { "label": "Output", "name": "output", "type": "any" }
+          ]
+        }
+      },
+      {
+        "id": "end-echo",
+        "type": "end",
+        "position": { "x": 600, "y": 200 },
+        "data": {
+          "id": "end-echo",
+          "label": "応答出力",
+          "name": "end",
+          "type": "end",
+          "baseClasses": ["End"],
+          "category": "flowControl",
+          "description": "処理結果を出力する終了ノード",
+          "inputs": {
+            "outputFields": ["response", "timestamp", "originalInput"]
+          },
+          "outputs": {},
+          "inputAnchors": [
+            { "label": "Input", "name": "input", "type": "any", "optional": true }
+          ],
+          "outputAnchors": []
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-start-transform",
+        "source": "start-echo",
+        "target": "transform-process",
+        "sourceHandle": "output",
+        "targetHandle": "input",
+        "type": "buttonedge"
+      },
+      {
+        "id": "edge-transform-end",
+        "source": "transform-process",
+        "target": "end-echo",
+        "sourceHandle": "output",
+        "targetHandle": "input",
+        "type": "buttonedge"
+      }
+    ],
+    "viewport": { "x": 100, "y": 150, "zoom": 1.0 }
+  },
+  "tags": ["テスト", "エコー", "LLM不使用", "デバッグ", "ルールベース", "シンプル"],
+  "createdAt": "2025-12-23T00:00:00.000Z",
+  "updatedAt": "2025-12-23T00:00:00.000Z"
+}

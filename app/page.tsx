@@ -33,6 +33,7 @@ import StorefrontIcon from '@mui/icons-material/Storefront';
 
 import NodePalette from './agent-builder/components/NodePalette';
 import CustomNode, { CustomNodeData } from './agent-builder/components/CustomNode';
+import ButtonEdge from './agent-builder/components/ButtonEdge';
 import NodeConfigPanel from './agent-builder/components/NodeConfigPanel';
 import SaveAgentModal from './agent-builder/components/SaveAgentModal';
 import TestRunModal from './agent-builder/components/TestRunModal';
@@ -46,9 +47,14 @@ interface ExtendedNodeData extends CustomNodeData {
   onDelete?: (nodeId: string) => void;
 }
 
-// カスタムノードタイプの登録
+// カスタムノードタイプの登録（コンポーネント外で定義してメモ化警告を回避）
 const nodeTypes = {
   custom: CustomNode,
+};
+
+// カスタムエッジタイプの登録（Flowise互換性のため）
+const edgeTypes = {
+  buttonedge: ButtonEdge,
 };
 
 // 初期ノード
@@ -433,6 +439,7 @@ export default function Home() {
               onNodeClick={onNodeClick}
               onNodeDoubleClick={onNodeDoubleClick}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               fitView
               snapToGrid
               snapGrid={[15, 15]}

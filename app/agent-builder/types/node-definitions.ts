@@ -170,6 +170,26 @@ export const FLOW_CONTROL_NODES: NodeTypeDefinition[] = [
       { id: 'complete', label: 'Complete', type: 'any', position: 'bottom' },
     ],
   },
+  {
+    type: 'humanReview',
+    label: 'Human Review',
+    category: 'flowControl',
+    icon: '👤',
+    description: '人間による確認・承認ポイント。AIの出力を人間が確認してから次へ進みます。',
+    color: '#FFD700',
+    inputs: [
+      { name: 'enabled', label: 'Enabled', type: 'boolean', default: true, description: '確認機能を有効にするか' },
+      { name: 'message', label: 'Review Message', type: 'string', placeholder: '確認してください', description: '確認時に表示するメッセージ' },
+      { name: 'allowEdit', label: 'Allow Edit', type: 'boolean', default: true, description: '編集を許可するか' },
+      { name: 'timeoutSeconds', label: 'Timeout (seconds)', type: 'number', default: 0, min: 0, description: '自動承認までの時間（0で無効）' },
+    ],
+    inputHandles: [
+      { id: 'input', label: 'Input', type: 'any', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'Output', type: 'any', position: 'right' },
+    ],
+  },
 ];
 
 // ============================================
@@ -257,6 +277,30 @@ export const EMBEDDING_NODES: NodeTypeDefinition[] = [
 // Vector Stores
 // ============================================
 export const VECTOR_STORE_NODES: NodeTypeDefinition[] = [
+  {
+    type: 'vectorstore',
+    label: 'Vector Store',
+    category: 'vectorStores',
+    icon: '📚',
+    description: '汎用ベクトルストア。セマンティック検索に使用。',
+    color: '#9C27B0',
+    inputs: [
+      { name: 'provider', label: 'Provider', type: 'select', default: 'pinecone', description: 'ベクトルストアプロバイダー', options: [
+        { label: 'Pinecone', value: 'pinecone' },
+        { label: 'Weaviate', value: 'weaviate' },
+        { label: 'Chroma', value: 'chroma' },
+        { label: 'Qdrant', value: 'qdrant' },
+      ]},
+      { name: 'indexName', label: 'Index Name', type: 'string', required: true, description: 'インデックス/コレクション名' },
+      { name: 'topK', label: 'Top K', type: 'number', default: 4, min: 1, max: 100, description: '検索結果として返す上位K件' },
+    ],
+    inputHandles: [
+      { id: 'input', label: 'Query', type: 'any', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'Results', type: 'any', position: 'right' },
+    ],
+  },
   {
     type: 'weaviate',
     label: 'Weaviate',
@@ -450,6 +494,30 @@ export const DOCUMENT_LOADER_NODES: NodeTypeDefinition[] = [
 // Memory
 // ============================================
 export const MEMORY_NODES: NodeTypeDefinition[] = [
+  {
+    type: 'memory',
+    label: 'Memory',
+    category: 'memory',
+    icon: '🧠',
+    description: '汎用メモリノード。会話履歴やコンテキストを保持。',
+    color: '#E91E63',
+    inputs: [
+      { name: 'memoryType', label: 'Memory Type', type: 'select', default: 'buffer', description: 'メモリの種類', options: [
+        { label: 'Buffer', value: 'buffer' },
+        { label: 'Buffer Window', value: 'bufferWindow' },
+        { label: 'Redis', value: 'redis' },
+      ]},
+      { name: 'sessionId', label: 'Session ID', type: 'string', placeholder: 'auto-generated if empty' },
+      { name: 'windowSize', label: 'Window Size', type: 'number', default: 10, min: 1, max: 100 },
+    ],
+    inputHandles: [
+      { id: 'input', label: 'Input', type: 'any', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'Output', type: 'any', position: 'right' },
+      { id: 'memory', label: 'Memory', type: 'memory', position: 'bottom' },
+    ],
+  },
   {
     type: 'redisMemory',
     label: 'Redis-Backed Chat Memory',
@@ -823,6 +891,36 @@ export const CHAIN_NODES: NodeTypeDefinition[] = [
 // Tools
 // ============================================
 export const TOOL_NODES: NodeTypeDefinition[] = [
+  // 汎用ツール
+  {
+    type: 'tool',
+    label: 'Tool',
+    category: 'tools',
+    icon: '🔧',
+    description: '汎用ツール。API呼び出しやカスタム処理を実行。',
+    color: '#607D8B',
+    inputs: [
+      { name: 'toolType', label: 'Tool Type', type: 'select', default: 'api', description: 'ツールの種類', options: [
+        { label: 'API Call', value: 'api' },
+        { label: 'Custom Function', value: 'custom' },
+        { label: 'Database Query', value: 'database' },
+      ]},
+      { name: 'apiEndpoint', label: 'API Endpoint', type: 'string', placeholder: '/api/...' },
+      { name: 'method', label: 'Method', type: 'select', default: 'POST', options: [
+        { label: 'GET', value: 'GET' },
+        { label: 'POST', value: 'POST' },
+        { label: 'PUT', value: 'PUT' },
+        { label: 'DELETE', value: 'DELETE' },
+      ]},
+    ],
+    inputHandles: [
+      { id: 'input', label: 'Input', type: 'any', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'Output', type: 'any', position: 'right' },
+      { id: 'tool', label: 'Tool', type: 'tool', position: 'bottom' },
+    ],
+  },
   // 検索ツール
   {
     type: 'serper',

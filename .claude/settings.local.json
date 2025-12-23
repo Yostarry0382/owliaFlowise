@@ -9,7 +9,14 @@
       "Bash(cat:*)",
       "Bash(curl:*)",
       "Bash(npm run build:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(npm run build:standalone:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker stop:*)",
+      "Bash(docker rm:*)",
+      "Bash(docker run:*)",
+      "Bash(timeout:*)",
+      "Bash(ping:*)"
     ]
   }
 }

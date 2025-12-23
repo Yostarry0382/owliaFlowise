@@ -591,6 +591,21 @@ export async function executeTemporaryFlow(
       const result = await executeFlowWithFlowise(chatflowId, question, sessionId);
       result.executionTime = Date.now() - startTime;
       return result;
+    } catch (execError) {
+      // Flowise実行エラーを適切に処理
+      const errorMessage = execError instanceof Error ? execError.message : 'Unknown error';
+
+      // Flowiseの一般的なエラーを分かりやすいメッセージに変換
+      let userFriendlyMessage = errorMessage;
+      if (errorMessage.includes('Ending node must be either a Chain or Agent or Engine')) {
+        userFriendlyMessage = 'フローの終端ノードがFlowise形式と互換性がありません。Agent, Chain, または Engine ノードで終了するフローが必要です。現在のフロー構造はOwliaFabrica独自の形式でテスト実行されます。';
+      }
+
+      return {
+        success: false,
+        error: userFriendlyMessage,
+        executionTime: Date.now() - startTime,
+      };
     } finally {
       // 一時Chatflowを削除
       await fetch(`/api/flowise/chatflows?id=${chatflowId}`, {
