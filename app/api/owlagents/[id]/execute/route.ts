@@ -3,21 +3,23 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { OwlAgent, ExecutionResult } from '@/app/types/flowise';
 import { FlowiseClient } from '@/app/lib/flowise-client';
+import { executeFlow } from '@/app/lib/native-execution-engine';
 
 const STORAGE_DIR = path.join(process.cwd(), 'data', 'owlagents');
 const flowiseClient = new FlowiseClient();
 
-// Simple execution function (mock for now, will integrate with Flowise later)
-async function executeOwlAgent(agent: OwlAgent, input: any): Promise<ExecutionResult> {
+// Execute OwlAgent using native engine or Flowise
+async function executeOwlAgent(agent: OwlAgent, input: any, useNative: boolean = true): Promise<ExecutionResult> {
   const startTime = Date.now();
   const logs: string[] = [];
 
   try {
     logs.push(`Starting execution of agent: ${agent.name}`);
     logs.push(`Input: ${JSON.stringify(input)}`);
+    logs.push(`Execution mode: ${useNative ? 'Native Engine' : 'Flowise'}`);
 
-    // Check if agent has Flowise chatflow ID
-    if (agent.flowiseChatflowId) {
+    // Option 1: Use Flowise if chatflow ID exists and not forcing native
+    if (!useNative && agent.flowiseChatflowId) {
       try {
         logs.push(`Executing via Flowise chatflow: ${agent.flowiseChatflowId}`);
 
@@ -38,31 +40,24 @@ async function executeOwlAgent(agent: OwlAgent, input: any): Promise<ExecutionRe
         };
       } catch (flowiseError) {
         logs.push(`Flowise execution failed: ${flowiseError}`);
-        // Fall through to simple execution
+        logs.push('Falling back to native execution...');
       }
     }
 
-    // Simple execution based on flow nodes
-    logs.push(`Executing ${agent.flow.nodes.length} nodes`);
+    // Option 2: Use native execution engine
+    logs.push(`Executing with Native Engine: ${agent.flow.nodes.length} nodes`);
 
-    // For now, just return a mock response
-    // TODO: Implement actual node execution logic
-    const output = {
-      message: 'Agent executed successfully (mock mode)',
-      agentName: agent.name,
-      input: input,
-      nodeCount: agent.flow.nodes.length,
-      edgeCount: agent.flow.edges.length,
-      timestamp: new Date().toISOString(),
-    };
+    const nativeResult = await executeFlow(
+      agent.flow.nodes,
+      agent.flow.edges,
+      input
+    );
 
-    const executionTime = Date.now() - startTime;
-    logs.push(`Execution completed in ${executionTime}ms`);
+    // Merge logs
+    nativeResult.logs.forEach(log => logs.push(log));
 
     return {
-      success: true,
-      output,
-      executionTime,
+      ...nativeResult,
       logs,
     };
   } catch (error) {
@@ -86,7 +81,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { input } = body;
+    const { input, useNative = true, useFlowise = false } = body;
 
     // Load the agent
     const filePath = path.join(STORAGE_DIR, `${id}.json`);
@@ -102,8 +97,8 @@ export async function POST(
       );
     }
 
-    // Execute the agent
-    const result = await executeOwlAgent(agent, input);
+    // Execute the agent (useNative=true by default, useFlowise overrides)
+    const result = await executeOwlAgent(agent, input, !useFlowise && useNative);
 
     return NextResponse.json(result);
   } catch (error) {

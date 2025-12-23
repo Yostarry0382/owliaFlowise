@@ -154,7 +154,8 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
   };
 
   const handleRun = async () => {
-    if (!input.trim() || !validation.valid) return;
+    // ネイティブエンジンはより柔軟なので、ノードがあれば実行可能
+    if (!input.trim() || nodes.length === 0) return;
 
     setIsRunning(true);
     setResult(null);
@@ -207,8 +208,18 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <PlayArrowIcon sx={{ color: '#4CAF50' }} />
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Test Run (Flowise Integration)
+            Test Run
           </Typography>
+          <Chip
+            label="Native Engine"
+            size="small"
+            sx={{
+              bgcolor: '#6366f1',
+              color: '#fff',
+              fontSize: '0.65rem',
+              height: 20,
+            }}
+          />
         </Box>
         <IconButton onClick={handleClose} sx={{ color: '#888' }}>
           <CloseIcon />
@@ -422,7 +433,7 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
               <CircularProgress size={24} sx={{ color: '#6366f1' }} />
               <Typography sx={{ color: '#aaa' }}>
-                Executing flow via Flowise API...
+                ネイティブエンジンでフローを実行中...
               </Typography>
             </Box>
           )}
@@ -634,7 +645,7 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
             isRunning ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : <PlayArrowIcon />
           }
           onClick={handleRun}
-          disabled={isRunning || !input.trim() || !validation.valid}
+          disabled={isRunning || !input.trim() || nodes.length === 0}
           sx={{
             bgcolor: '#4CAF50',
             '&:hover': { bgcolor: '#43A047' },

@@ -326,6 +326,12 @@ export interface ExecutionResult {
   logs: string[];
   error?: string;
   flowiseResponse?: FlowisePredictionResponse;
+  pendingReview?: {
+    nodeId: string;
+    output: any;
+    message: string;
+    allowEdit: boolean;
+  };
 }
 
 export interface ExecutionContext {
