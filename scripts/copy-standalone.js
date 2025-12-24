@@ -16,6 +16,10 @@ const publicDest = path.join(standaloneDir, 'public');
 const envSrc = path.join(rootDir, '.env.local');
 const envDest = path.join(standaloneDir, '.env.local');
 
+// Copy data folder (for OwlAgents storage)
+const dataSrc = path.join(rootDir, 'data');
+const dataDest = path.join(standaloneDir, 'data');
+
 function copyRecursiveSync(src, dest) {
   if (!fs.existsSync(src)) {
     return false;
@@ -61,6 +65,13 @@ if (fs.existsSync(envSrc)) {
   console.log('✓ Copied .env.local -> .next/standalone/.env.local');
 } else {
   console.log('- .env.local not found (skipped)');
+}
+
+// Copy data folder
+if (copyRecursiveSync(dataSrc, dataDest)) {
+  console.log('✓ Copied data -> .next/standalone/data');
+} else {
+  console.log('- data folder not found (skipped)');
 }
 
 console.log('\n✓ Standalone build complete!');
