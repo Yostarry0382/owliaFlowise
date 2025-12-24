@@ -133,9 +133,25 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
       // 既存の設定値にデフォルト値をマージ
       const defaults: Record<string, any> = {};
       const currentConfig = nodeData.config || {};
+
+      // Azure OpenAI環境変数からのプリセット値
+      const azureEnvDefaults: Record<string, string | undefined> = {
+        apiKey: process.env.NEXT_PUBLIC_AZURE_OPENAI_API_KEY,
+        azureOpenAIApiKey: process.env.NEXT_PUBLIC_AZURE_OPENAI_API_KEY,
+        endpoint: process.env.NEXT_PUBLIC_AZURE_OPENAI_ENDPOINT,
+        azureOpenAIApiInstanceName: process.env.NEXT_PUBLIC_AZURE_OPENAI_ENDPOINT?.replace('https://', '').replace('.openai.azure.com', ''),
+        deploymentName: process.env.NEXT_PUBLIC_AZURE_OPENAI_DEPLOYMENT_NAME,
+        apiVersion: process.env.NEXT_PUBLIC_AZURE_OPENAI_API_VERSION,
+      };
+
       nodeDefinition.inputs.forEach((input) => {
-        if (input.default !== undefined && currentConfig[input.name] === undefined) {
-          defaults[input.name] = input.default;
+        if (currentConfig[input.name] === undefined) {
+          // Azure関連フィールドの環境変数プリセット
+          if (azureEnvDefaults[input.name]) {
+            defaults[input.name] = azureEnvDefaults[input.name];
+          } else if (input.default !== undefined) {
+            defaults[input.name] = input.default;
+          }
         }
       });
       if (Object.keys(defaults).length > 0) {
