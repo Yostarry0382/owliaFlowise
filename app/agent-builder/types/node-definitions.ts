@@ -218,9 +218,7 @@ export const CHAT_MODEL_NODES: NodeTypeDefinition[] = [
       { name: 'topP', label: 'Top P', type: 'number', default: 1, min: 0, max: 1, step: 0.1, description: '核サンプリング。確率質量の上位P%からサンプリング' },
       { name: 'frequencyPenalty', label: 'Frequency Penalty', type: 'number', default: 0, min: 0, max: 2, step: 0.1, description: '頻度に基づくペナルティ。高いほど同じ単語の繰り返しを抑制' },
       { name: 'presencePenalty', label: 'Presence Penalty', type: 'number', default: 0, min: 0, max: 2, step: 0.1, description: '存在に基づくペナルティ。高いほど新しいトピックへの言及を促進' },
-      { name: 'azureApiKey', label: 'Azure API Key', type: 'password', required: true, description: 'Azure OpenAIのAPIキー' },
-      { name: 'azureEndpoint', label: 'Azure Endpoint', type: 'string', required: true, placeholder: 'https://xxx.openai.azure.com/', description: 'Azure OpenAIリソースのエンドポイントURL' },
-      { name: 'apiVersion', label: 'API Version', type: 'select', default: '2024-02-15-preview', description: 'Azure OpenAI APIのバージョン', options: [
+      { name: 'apiVersion', label: 'API Version', type: 'select', default: '2024-02-15-preview', description: 'Azure OpenAI APIのバージョン（※APIキーとエンドポイントは環境変数から自動取得）', options: [
         { label: '2024-08-01-preview', value: '2024-08-01-preview' },
         { label: '2024-05-01-preview', value: '2024-05-01-preview' },
         { label: '2024-02-15-preview', value: '2024-02-15-preview' },
@@ -256,9 +254,7 @@ export const EMBEDDING_NODES: NodeTypeDefinition[] = [
         { label: 'text-embedding-3-small', value: 'text-embedding-3-small' },
         { label: 'text-embedding-3-large', value: 'text-embedding-3-large' },
       ]},
-      { name: 'azureApiKey', label: 'Azure API Key', type: 'password', required: true, description: 'Azure OpenAIのAPIキー' },
-      { name: 'azureEndpoint', label: 'Azure Endpoint', type: 'string', required: true, description: 'Azure OpenAIリソースのエンドポイントURL' },
-      { name: 'apiVersion', label: 'API Version', type: 'string', default: '2024-02-15-preview', description: 'Azure OpenAI APIのバージョン' },
+      { name: 'apiVersion', label: 'API Version', type: 'string', default: '2024-02-15-preview', description: 'Azure OpenAI APIのバージョン（※APIキーとエンドポイントは環境変数から自動取得）' },
       { name: 'batchSize', label: 'Batch Size', type: 'number', default: 512, min: 1, max: 2048, description: '一度に処理するテキストの数' },
       { name: 'stripNewLines', label: 'Strip New Lines', type: 'boolean', default: true, description: 'テキストから改行を削除するか' },
       { name: 'dimensions', label: 'Dimensions', type: 'number', min: 1, max: 3072, description: 'text-embedding-3モデル用の埋め込み次元数（オプション）' },
@@ -629,15 +625,14 @@ export const AGENT_NODES: NodeTypeDefinition[] = [
     ],
   },
   {
-    type: 'openAIAssistant',
-    label: 'OpenAI Assistant',
+    type: 'azureOpenAIAssistant',
+    label: 'Azure OpenAI Assistant',
     category: 'agents',
     icon: '🎓',
-    description: 'OpenAI Assistant API連携',
+    description: 'Azure OpenAI Assistant API連携（※APIキーとエンドポイントは環境変数から自動取得）',
     color: '#00BCD4',
     inputs: [
-      { name: 'assistantId', label: 'Assistant ID', type: 'string', required: true },
-      { name: 'openAIApiKey', label: 'OpenAI API Key', type: 'password', required: true },
+      { name: 'assistantId', label: 'Assistant ID', type: 'string', required: true, description: 'Azure OpenAIで作成したAssistantのID' },
     ],
     inputHandles: [
       { id: 'input', label: 'Input', type: 'any', position: 'left' },
@@ -648,11 +643,11 @@ export const AGENT_NODES: NodeTypeDefinition[] = [
     ],
   },
   {
-    type: 'openAIFunctionAgent',
-    label: 'OpenAI Function Agent',
+    type: 'azureFunctionAgent',
+    label: 'Azure Function Agent',
     category: 'agents',
     icon: '⚙️',
-    description: 'OpenAI Function Calling対応',
+    description: 'Azure OpenAI Function Calling対応（※APIキーとエンドポイントは環境変数から自動取得）',
     color: '#00BCD4',
     inputs: [
       { name: 'systemMessage', label: 'System Message', type: 'text' },
@@ -670,11 +665,11 @@ export const AGENT_NODES: NodeTypeDefinition[] = [
     ],
   },
   {
-    type: 'openAIToolAgent',
-    label: 'OpenAI Tool Agent',
+    type: 'azureToolAgent',
+    label: 'Azure Tool Agent',
     category: 'agents',
     icon: '🛠️',
-    description: 'OpenAI Tool Use対応',
+    description: 'Azure OpenAI Tool Use対応（※APIキーとエンドポイントは環境変数から自動取得）',
     color: '#00BCD4',
     inputs: [
       { name: 'systemMessage', label: 'System Message', type: 'text' },

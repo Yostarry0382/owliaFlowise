@@ -576,7 +576,15 @@ interface AgentStatistics {
 ### Required Environment Variables
 
 ```env
-# LLM Configuration
+# Azure OpenAI Configuration（推奨）
+# Azure OpenAIを使用する場合、以下の4つを設定してください
+# ノード内での入力は不要です（環境変数から自動取得されます）
+AZURE_OPENAI_API_KEY=<your-azure-openai-key>
+AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+
+# LLM Configuration（通常のOpenAI APIを使用する場合）
 OPENAI_API_KEY=<your-openai-key>
 ANTHROPIC_API_KEY=<your-anthropic-key>
 GOOGLE_API_KEY=<your-google-key>
@@ -589,6 +597,8 @@ PINECONE_ENVIRONMENT=<your-pinecone-env>
 SUPABASE_URL=<your-supabase-url>
 SUPABASE_ANON_KEY=<your-supabase-key>
 ```
+
+**Note**: Azure OpenAI を使用する場合、`Azure ChatOpenAI` ノードや `Azure OpenAI Embeddings` ノードでは API キーとエンドポイントの入力は不要です。環境変数から自動的に取得されます。
 
 ## Code Style Guidelines
 
