@@ -39,6 +39,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { getNodeDefinition, NodeInputParam, NodeHandle } from '../types/node-definitions';
 import { getNodeReference } from '../types/node-references';
 import { CustomNodeData } from './CustomNode';
+import FileDropZone from './FileDropZone';
 
 interface SavedOwlAgent {
   id: string;
@@ -477,41 +478,21 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
 
       case 'file':
         return (
-          <Box key={input.name}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-              <Typography sx={{ color: '#888', fontSize: '0.8rem' }}>
-                {input.label}
-              </Typography>
-              {input.required && <span style={{ color: '#f44336', fontSize: '0.8rem' }}>*</span>}
-            </Box>
-            <Button
-              variant="outlined"
-              component="label"
-              fullWidth
-              sx={{
-                color: '#fff',
-                borderColor: '#3d3d54',
-                '&:hover': { borderColor: '#4d4d64' },
-              }}
-            >
-              Upload File
-              <input
-                type="file"
-                hidden
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    handleConfigChange(input.name, file.name);
-                  }
-                }}
-              />
-            </Button>
-            {value && (
-              <Typography sx={{ color: '#888', fontSize: '0.75rem', mt: 0.5 }}>
-                Selected: {value}
-              </Typography>
-            )}
-          </Box>
+          <FileDropZone
+            key={input.name}
+            value={value}
+            onChange={(fileName, file) => {
+              handleConfigChange(input.name, fileName);
+              // ファイルオブジェクト自体も保存（将来のアップロード処理用）
+              if (file) {
+                handleConfigChange(`${input.name}_file`, file);
+              }
+            }}
+            label={input.label}
+            required={input.required}
+            description={input.description}
+            nodeType={nodeData.type}
+          />
         );
 
       default:

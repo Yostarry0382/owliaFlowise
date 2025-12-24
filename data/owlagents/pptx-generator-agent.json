@@ -1,0 +1,166 @@
+{
+  "id": "pptx-generator-agent",
+  "name": "PowerPoint Generator Agent",
+  "description": "会社テンプレートを使用してPowerPointスライドを自動生成するエージェント。ユーザーの要望に基づいてスライド内容を作成し、指定されたテンプレートに適用します。",
+  "icon": "presentation",
+  "iconStyle": "blue",
+  "tags": ["presentation", "powerpoint", "document", "automation", "ビジネス文書"],
+  "category": "Document Generation",
+  "version": "1.0.0",
+  "author": "OwliaFabrica",
+  "createdAt": "2024-12-24T00:00:00.000Z",
+  "updatedAt": "2024-12-24T00:00:00.000Z",
+  "flow": {
+    "nodes": [
+      {
+        "id": "start-pptx",
+        "type": "start",
+        "position": { "x": 0, "y": 200 },
+        "data": {
+          "label": "スライド作成リクエスト",
+          "type": "start",
+          "category": "flowControl",
+          "config": {
+            "inputFields": ["userRequest", "templateId", "slideCount"]
+          }
+        }
+      },
+      {
+        "id": "template-analyzer",
+        "type": "tool",
+        "position": { "x": 300, "y": 50 },
+        "data": {
+          "label": "テンプレート解析",
+          "type": "tool",
+          "category": "tools",
+          "config": {
+            "toolType": "api",
+            "apiEndpoint": "http://localhost:8100/api/analyze",
+            "method": "POST"
+          }
+        }
+      },
+      {
+        "id": "llm-planner",
+        "type": "azureChatOpenAI",
+        "position": { "x": 600, "y": 200 },
+        "data": {
+          "label": "スライド構成プランナー",
+          "type": "azureChatOpenAI",
+          "category": "chatModels",
+          "config": {
+            "systemMessage": "あなたはプレゼンテーション作成の専門家です。\n\nユーザーのリクエストとテンプレート情報を元に、スライド構成を計画してください。\n\n以下のJSON形式で出力してください：\n```json\n{\n  \"slides\": [\n    {\n      \"layout_index\": 0,\n      \"title\": \"タイトル\",\n      \"subtitle\": \"サブタイトル\",\n      \"notes\": \"発表者ノート\"\n    },\n    {\n      \"layout_index\": 1,\n      \"title\": \"セクションタイトル\",\n      \"bullets\": [\"ポイント1\", \"ポイント2\", \"ポイント3\"],\n      \"notes\": \"発表者ノート\"\n    }\n  ],\n  \"metadata\": {\n    \"title\": \"プレゼンテーションタイトル\",\n    \"author\": \"作成者名\"\n  }\n}\n```\n\n重要：\n- テンプレートのレイアウト情報を参考に適切なlayout_indexを選択\n- 各スライドの目的を明確に\n- 箇条書きは簡潔に（1行30文字以内推奨）\n- 発表者ノートには詳細な説明を記載",
+            "temperature": 0.7,
+            "maxTokens": 4000
+          },
+          "humanReview": {
+            "enabled": true,
+            "allowEdit": true,
+            "message": "生成されたスライド構成を確認してください",
+            "autoApproveTimeout": 0
+          }
+        }
+      },
+      {
+        "id": "json-parser",
+        "type": "customTool",
+        "position": { "x": 950, "y": 200 },
+        "data": {
+          "label": "JSON抽出",
+          "type": "customTool",
+          "category": "tools",
+          "config": {
+            "toolName": "JSON Parser",
+            "toolDescription": "LLM出力からJSONを抽出するツール",
+            "jsCode": "// LLM出力からJSONを抽出\nconst jsonMatch = input.match(/```json([\\s\\S]*?)```/);\nif (jsonMatch) {\n  return JSON.parse(jsonMatch[1].trim());\n}\nreturn JSON.parse(input);"
+          }
+        }
+      },
+      {
+        "id": "pptx-generator",
+        "type": "tool",
+        "position": { "x": 1250, "y": 200 },
+        "data": {
+          "label": "PPTX生成",
+          "type": "tool",
+          "category": "tools",
+          "config": {
+            "toolType": "api",
+            "apiEndpoint": "http://localhost:8100/api/generate",
+            "method": "POST"
+          }
+        }
+      },
+      {
+        "id": "end-pptx",
+        "type": "end",
+        "position": { "x": 1550, "y": 200 },
+        "data": {
+          "label": "完了・ダウンロード",
+          "type": "end",
+          "category": "flowControl",
+          "config": {
+            "responseTemplate": "PowerPointファイルを生成しました！\n\n📁 ファイル名: {{filename}}\n📊 スライド数: {{slide_count}}枚\n\n[ダウンロード]({{download_url}})"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-start-analyzer",
+        "source": "start-pptx",
+        "target": "template-analyzer",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-analyzer-planner",
+        "source": "template-analyzer",
+        "target": "llm-planner",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-planner-parser",
+        "source": "llm-planner",
+        "target": "json-parser",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-parser-generator",
+        "source": "json-parser",
+        "target": "pptx-generator",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-generator-end",
+        "source": "pptx-generator",
+        "target": "end-pptx",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      }
+    ]
+  },
+  "settings": {
+    "defaultTemplateId": "company-template",
+    "pptxServiceUrl": "http://localhost:8100",
+    "supportedLayouts": [
+      { "index": 0, "name": "タイトルスライド", "description": "プレゼンテーションの表紙" },
+      { "index": 1, "name": "タイトルとコンテンツ", "description": "見出しと本文/箇条書き" },
+      { "index": 2, "name": "セクション見出し", "description": "セクションの区切り" },
+      { "index": 3, "name": "2つのコンテンツ", "description": "左右に分割されたレイアウト" },
+      { "index": 4, "name": "比較", "description": "2項目の比較表示" },
+      { "index": 5, "name": "タイトルのみ", "description": "タイトルと自由配置エリア" },
+      { "index": 6, "name": "白紙", "description": "完全に空白のスライド" }
+    ]
+  },
+  "abilities": {
+    "popularity": { "score": 0, "rank": "F" },
+    "like": { "score": 0, "rank": "F" },
+    "reliability": { "score": 85, "rank": "A" },
+    "speed": { "score": 70, "rank": "B" },
+    "costEfficiency": { "score": 75, "rank": "B" }
+  }
+}

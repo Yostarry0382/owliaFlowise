@@ -1,0 +1,70 @@
+{
+  "name": "pptx_generator",
+  "description": "PowerPointプレゼンテーションを生成するツール。会社テンプレートを使用してスライドを作成します。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["analyze_template", "generate", "fill_template", "list_templates"],
+        "description": "実行するアクション"
+      },
+      "template_id": {
+        "type": "string",
+        "description": "使用するテンプレートのID"
+      },
+      "slides": {
+        "type": "array",
+        "description": "スライドコンテンツの配列",
+        "items": {
+          "type": "object",
+          "properties": {
+            "layout_index": {
+              "type": "integer",
+              "description": "使用するレイアウトのインデックス（0から開始）"
+            },
+            "title": {
+              "type": "string",
+              "description": "スライドのタイトル"
+            },
+            "subtitle": {
+              "type": "string",
+              "description": "サブタイトル"
+            },
+            "body": {
+              "type": "string",
+              "description": "本文テキスト"
+            },
+            "bullets": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "箇条書きリスト"
+            },
+            "notes": {
+              "type": "string",
+              "description": "発表者ノート"
+            },
+            "placeholders": {
+              "type": "object",
+              "description": "プレースホルダーインデックスとテキストのマッピング"
+            }
+          }
+        }
+      },
+      "output_filename": {
+        "type": "string",
+        "description": "出力ファイル名（.pptx拡張子は自動付与）"
+      },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "author": { "type": "string" },
+          "title": { "type": "string" },
+          "subject": { "type": "string" }
+        },
+        "description": "プレゼンテーションのメタデータ"
+      }
+    },
+    "required": ["action"]
+  }
+}
