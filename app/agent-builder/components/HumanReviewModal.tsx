@@ -14,6 +14,8 @@ import {
   Chip,
   LinearProgress,
   Alert,
+  CircularProgress,
+  Tooltip,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import PersonIcon from '@mui/icons-material/Person';
@@ -21,6 +23,8 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import EditIcon from '@mui/icons-material/Edit';
 import TimerIcon from '@mui/icons-material/Timer';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import HistoryIcon from '@mui/icons-material/History';
 
 export interface PendingReview {
   nodeId: string;
@@ -56,6 +60,12 @@ export default function HumanReviewModal({
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [autoApproveProgress, setAutoApproveProgress] = useState(0);
 
+  // AI修正関連の状態
+  const [isRevising, setIsRevising] = useState(false);
+  const [revisionHistory, setRevisionHistory] = useState<string[]>([]);
+  const [currentRevisionIndex, setCurrentRevisionIndex] = useState(-1);
+  const [revisionError, setRevisionError] = useState<string | null>(null);
+
   // 出力を文字列に変換
   const outputString = pendingReview
     ? typeof pendingReview.output === 'string'
@@ -69,6 +79,9 @@ export default function HumanReviewModal({
       setEditedOutput(outputString);
       setIsEditing(false);
       setComments('');
+      setRevisionHistory([outputString]); // 元の出力を履歴の最初に
+      setCurrentRevisionIndex(0);
+      setRevisionError(null);
 
       // タイムアウト設定がある場合
       if (pendingReview.timeoutSeconds && pendingReview.timeoutSeconds > 0) {
@@ -80,6 +93,71 @@ export default function HumanReviewModal({
       }
     }
   }, [open, pendingReview, outputString]);
+
+  // AIによる修正リクエスト
+  const handleAIRevision = async () => {
+    if (!comments.trim()) {
+      setRevisionError('修正の指示を「コメント」欄に入力してください');
+      return;
+    }
+
+    setIsRevising(true);
+    setRevisionError(null);
+
+    try {
+      const response = await fetch('/api/flows/revise', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          originalOutput: editedOutput,
+          userFeedback: comments,
+          nodeContext: {
+            nodeName: pendingReview?.nodeName,
+            nodeType: 'humanReview',
+          },
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || '修正に失敗しました');
+      }
+
+      // 修正結果を履歴に追加
+      const newHistory = [...revisionHistory.slice(0, currentRevisionIndex + 1), data.revisedOutput];
+      setRevisionHistory(newHistory);
+      setCurrentRevisionIndex(newHistory.length - 1);
+      setEditedOutput(data.revisedOutput);
+      setIsEditing(true); // 編集モードに切り替え
+      setComments(''); // コメントをクリア
+    } catch (error) {
+      console.error('AI修正エラー:', error);
+      setRevisionError(error instanceof Error ? error.message : '修正に失敗しました');
+    } finally {
+      setIsRevising(false);
+    }
+  };
+
+  // 修正履歴を戻る
+  const handleUndoRevision = () => {
+    if (currentRevisionIndex > 0) {
+      const newIndex = currentRevisionIndex - 1;
+      setCurrentRevisionIndex(newIndex);
+      setEditedOutput(revisionHistory[newIndex]);
+    }
+  };
+
+  // 修正履歴を進む
+  const handleRedoRevision = () => {
+    if (currentRevisionIndex < revisionHistory.length - 1) {
+      const newIndex = currentRevisionIndex + 1;
+      setCurrentRevisionIndex(newIndex);
+      setEditedOutput(revisionHistory[newIndex]);
+    }
+  };
 
   // タイムアウトカウントダウン
   useEffect(() => {
@@ -304,18 +382,63 @@ export default function HumanReviewModal({
           )}
         </Box>
 
-        {/* コメント */}
+        {/* コメント / 修正指示 */}
         <Box>
-          <Typography sx={{ color: '#888', fontSize: '0.85rem', mb: 1 }}>
-            Comments (optional)
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+            <Typography sx={{ color: '#888', fontSize: '0.85rem' }}>
+              {isRevising ? 'AI修正中...' : 'コメント / 修正指示'}
+            </Typography>
+            {revisionHistory.length > 1 && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Chip
+                  icon={<HistoryIcon sx={{ fontSize: '0.9rem' }} />}
+                  label={`${currentRevisionIndex + 1}/${revisionHistory.length}`}
+                  size="small"
+                  sx={{
+                    bgcolor: '#252536',
+                    color: '#888',
+                    fontSize: '0.7rem',
+                    height: 24,
+                  }}
+                />
+                <Tooltip title="前の版に戻す">
+                  <span>
+                    <IconButton
+                      size="small"
+                      onClick={handleUndoRevision}
+                      disabled={currentRevisionIndex <= 0}
+                      sx={{ color: currentRevisionIndex > 0 ? '#90CAF9' : '#555' }}
+                    >
+                      <HistoryIcon sx={{ fontSize: '1rem', transform: 'scaleX(-1)' }} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Tooltip title="次の版に進む">
+                  <span>
+                    <IconButton
+                      size="small"
+                      onClick={handleRedoRevision}
+                      disabled={currentRevisionIndex >= revisionHistory.length - 1}
+                      sx={{ color: currentRevisionIndex < revisionHistory.length - 1 ? '#90CAF9' : '#555' }}
+                    >
+                      <HistoryIcon sx={{ fontSize: '1rem' }} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </Box>
+            )}
+          </Box>
           <TextField
             value={comments}
-            onChange={(e) => setComments(e.target.value)}
+            onChange={(e) => {
+              setComments(e.target.value);
+              setRevisionError(null);
+            }}
             fullWidth
             multiline
             rows={2}
-            placeholder="Add any comments about your decision..."
+            placeholder="修正してほしい内容を入力してください（例: もっと丁寧な表現にして、箇条書きで整理して）"
+            disabled={isRevising}
             sx={{
               '& .MuiOutlinedInput-root': {
                 color: '#fff',
@@ -326,6 +449,63 @@ export default function HumanReviewModal({
               },
             }}
           />
+
+          {/* AI修正ボタン */}
+          <Box sx={{ mt: 1.5, display: 'flex', gap: 1, alignItems: 'center' }}>
+            <Button
+              variant="outlined"
+              startIcon={isRevising ? <CircularProgress size={16} color="inherit" /> : <AutoFixHighIcon />}
+              onClick={handleAIRevision}
+              disabled={isRevising || !comments.trim()}
+              sx={{
+                color: '#9C27B0',
+                borderColor: '#9C27B0',
+                '&:hover': {
+                  borderColor: '#7B1FA2',
+                  bgcolor: 'rgba(156, 39, 176, 0.1)',
+                },
+                '&:disabled': {
+                  color: '#555',
+                  borderColor: '#333',
+                },
+              }}
+            >
+              {isRevising ? '修正中...' : 'AIで修正'}
+            </Button>
+            <Typography sx={{ color: '#666', fontSize: '0.75rem' }}>
+              上記の指示に基づいてAIが出力を修正します
+            </Typography>
+          </Box>
+
+          {/* エラー表示 */}
+          {revisionError && (
+            <Alert
+              severity="error"
+              sx={{
+                mt: 1,
+                bgcolor: 'rgba(244, 67, 54, 0.1)',
+                color: '#f44336',
+                '& .MuiAlert-icon': { color: '#f44336' },
+              }}
+            >
+              {revisionError}
+            </Alert>
+          )}
+
+          {/* 修正された場合のインジケーター */}
+          {currentRevisionIndex > 0 && (
+            <Alert
+              severity="info"
+              sx={{
+                mt: 1,
+                bgcolor: 'rgba(156, 39, 176, 0.1)',
+                color: '#CE93D8',
+                '& .MuiAlert-icon': { color: '#CE93D8' },
+              }}
+            >
+              AIによる修正が適用されています（{currentRevisionIndex}回修正）。内容を確認して承認してください。
+            </Alert>
+          )}
         </Box>
       </DialogContent>
 
