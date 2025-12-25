@@ -18,7 +18,7 @@ export type NodeCategory =
 export interface NodeInputParam {
   name: string;
   label: string;
-  type: 'string' | 'number' | 'boolean' | 'select' | 'password' | 'text' | 'json' | 'file';
+  type: 'string' | 'number' | 'boolean' | 'select' | 'password' | 'text' | 'json' | 'file' | 'agentMultiSelect' | 'builtinToolSelect';
   default?: any;
   placeholder?: string;
   description?: string;
@@ -221,6 +221,15 @@ export const CHAT_MODEL_NODES: NodeTypeDefinition[] = [
         { label: '2023-12-01-preview', value: '2023-12-01-preview' },
       ]},
       { name: 'timeout', label: 'Timeout', type: 'number', default: 60000, min: 1000, max: 300000, description: 'リクエストのタイムアウト時間（ミリ秒）' },
+      // ツール設定
+      { name: 'enableTools', label: 'Enable Tools', type: 'boolean', default: false, description: 'ツール機能を有効にする' },
+      { name: 'builtinTools', label: 'Built-in Tools', type: 'builtinToolSelect', default: [], description: '使用する組み込みツールを選択' },
+      { name: 'toolAgents', label: 'OwlAgent Tools', type: 'agentMultiSelect', default: [], description: 'ツールとして使用するOwlAgentを選択（複数選択可）' },
+      { name: 'toolChoice', label: 'Tool Choice', type: 'select', default: 'auto', description: 'ツール利用の判断方法。autoはLLMが必要に応じて判断、requiredは必ずツールを使用', options: [
+        { label: 'Auto（LLMが判断）', value: 'auto' },
+        { label: 'Required（必ず使用）', value: 'required' },
+      ]},
+      { name: 'maxIterations', label: 'Max Iterations', type: 'number', default: 5, min: 1, max: 20, description: 'ツール呼び出しの最大回数。無限ループを防止' },
     ],
     inputHandles: [
       { id: 'input', label: 'Input', type: 'any', position: 'left' },
@@ -735,28 +744,6 @@ export const OWL_AGENT_NODE: NodeTypeDefinition = {
 };
 
 // ============================================
-// Agent As Tool Node (OwlAgentをツールとして使用)
-// ============================================
-export const AGENT_AS_TOOL_NODE: NodeTypeDefinition = {
-  type: 'agentAsTool',
-  label: 'Agent As Tool',
-  category: 'tools',
-  icon: '🦉🔧',
-  description: 'OwlAgentをツールとして使用。LLMエージェントがこのツールを呼び出してOwlAgentを実行できます。',
-  color: '#FF5722',
-  inputs: [
-    { name: 'agentId', label: 'Agent', type: 'select', required: true, options: [], description: 'ツールとして使用するOwlAgent' },
-    { name: 'toolName', label: 'Tool Name', type: 'string', required: true, placeholder: 'my_agent_tool', description: 'ツールの名前（LLMが使用する識別子）' },
-    { name: 'toolDescription', label: 'Tool Description', type: 'text', required: true, placeholder: 'このエージェントは○○を実行します', description: 'ツールの説明（LLMがいつこのツールを使うか判断するために使用）' },
-    { name: 'returnDirect', label: 'Return Direct', type: 'boolean', default: false, description: '有効にすると、このツールの結果を直接最終出力として返します' },
-  ],
-  inputHandles: [],
-  outputHandles: [
-    { id: 'tool', label: 'Tool', type: 'tool', position: 'right' },
-  ],
-};
-
-// ============================================
 // 全ノード定義の統合
 // ============================================
 export const ALL_NODE_DEFINITIONS: NodeTypeDefinition[] = [
@@ -767,7 +754,6 @@ export const ALL_NODE_DEFINITIONS: NodeTypeDefinition[] = [
   ...DOCUMENT_LOADER_NODES,
   ...MEMORY_NODES,
   ...TOOL_NODES,
-  AGENT_AS_TOOL_NODE,
   OWL_AGENT_NODE,
 ];
 

@@ -82,17 +82,42 @@ function topologicalSort(nodes: FlowNode[], edges: FlowEdge[]): FlowNode[] {
 function collectNodeInputs(
   node: FlowNode,
   edges: FlowEdge[],
-  nodeOutputs: Map<string, any>
+  nodeOutputs: Map<string, any>,
+  allNodes: FlowNode[]
 ): Record<string, any> {
   const inputs: Record<string, any> = {};
+  // 同じハンドルへの複数接続を追跡
+  const handleConnections: Record<string, { output: any; sourceNode: FlowNode }[]> = {};
 
   edges
     .filter(e => e.target === node.id)
     .forEach(e => {
       const sourceOutput = nodeOutputs.get(e.source);
+      const sourceNode = allNodes.find(n => n.id === e.source);
       const handleId = e.targetHandle || 'input';
-      inputs[handleId] = sourceOutput;
+
+      if (!handleConnections[handleId]) {
+        handleConnections[handleId] = [];
+      }
+      handleConnections[handleId].push({ output: sourceOutput, sourceNode: sourceNode! });
     });
+
+  // 各ハンドルの接続を処理
+  Object.entries(handleConnections).forEach(([handleId, connections]) => {
+    if (handleId === 'tools' && connections.length > 0) {
+      // toolsハンドルの場合は配列として、ソースノード情報も含める
+      inputs[handleId] = connections.map(c => ({
+        value: c.output,
+        sourceNode: c.sourceNode,
+      }));
+    } else if (connections.length === 1) {
+      // 単一接続の場合は値のみ
+      inputs[handleId] = connections[0].output;
+    } else {
+      // 複数接続の場合は配列
+      inputs[handleId] = connections.map(c => c.output);
+    }
+  });
 
   return inputs;
 }
@@ -154,19 +179,465 @@ const llmExecutor: NodeExecutor = {
     const systemMessage = config.systemMessage || '';
     const temperature = config.temperature || 0.7;
     const maxIterations = config.maxIterations || 5; // ツール呼び出しの最大回数
+    const enableTools = config.enableTools || false; // ツール機能の有効/無効
+    const builtinToolIds: string[] = config.builtinTools || []; // 選択された組み込みツールのID配列
+    const toolAgentIds: string[] = config.toolAgents || []; // 選択されたOwlAgentのID配列
+    const toolChoice = config.toolChoice || 'auto'; // ツール利用の判断方法: auto, required
     const userMessage = inputs.input || inputs.prompt || context.input;
 
-    // ツール入力を処理（AgentAsToolノードからの接続）
-    const toolInputs = inputs.tools;
+    // ツール配列
     const tools: any[] = [];
 
-    if (toolInputs) {
-      // 単一のツールまたは配列
-      const toolArray = Array.isArray(toolInputs) ? toolInputs : [toolInputs];
-      for (const tool of toolArray) {
-        if (tool && tool.type === 'agentAsTool' && tool.schema) {
+    // 組み込みツールをロード
+    if (enableTools && builtinToolIds.length > 0) {
+      context.logs.push(`[LLM] 組み込みツール: ${builtinToolIds.length}個をロード中...`);
+
+      // 組み込みツールの定義
+      const builtinToolDefinitions: Record<string, any> = {
+        writeFile: {
+          name: 'write_file',
+          description: 'ファイルにテキストを書き込みます。basePath（デフォルト: ./data/output）を基準としたファイルパスを指定してください。',
+          schema: {
+            type: 'function',
+            function: {
+              name: 'write_file',
+              description: 'ファイルにテキストを書き込みます',
+              parameters: {
+                type: 'object',
+                properties: {
+                  filePath: { type: 'string', description: 'ファイルパス（例: output.txt, reports/summary.md）' },
+                  content: { type: 'string', description: '書き込む内容' },
+                },
+                required: ['filePath', 'content'],
+              },
+            },
+          },
+          execute: async (args: { filePath: string; content: string }) => {
+            const fs = await import('fs').then(m => m.promises);
+            const path = await import('path');
+            const basePath = config.writeFileBasePath || './data/output';
+            const fullPath = path.join(basePath, args.filePath);
+
+            // ディレクトリを作成
+            await fs.mkdir(path.dirname(fullPath), { recursive: true });
+            await fs.writeFile(fullPath, args.content, 'utf-8');
+            context.logs.push(`[Tool] ファイル書き込み完了: ${fullPath}`);
+            return `ファイルを書き込みました: ${fullPath}`;
+          },
+        },
+        readFile: {
+          name: 'read_file',
+          description: 'ファイルの内容を読み込みます',
+          schema: {
+            type: 'function',
+            function: {
+              name: 'read_file',
+              description: 'ファイルの内容を読み込みます',
+              parameters: {
+                type: 'object',
+                properties: {
+                  filePath: { type: 'string', description: 'ファイルパス' },
+                },
+                required: ['filePath'],
+              },
+            },
+          },
+          execute: async (args: { filePath: string }) => {
+            const fs = await import('fs').then(m => m.promises);
+            const path = await import('path');
+            const basePath = config.readFileBasePath || './data';
+            const fullPath = path.join(basePath, args.filePath);
+
+            try {
+              const content = await fs.readFile(fullPath, 'utf-8');
+              context.logs.push(`[Tool] ファイル読み込み完了: ${fullPath}`);
+              return content;
+            } catch (error) {
+              return `ファイルが見つかりません: ${fullPath}`;
+            }
+          },
+        },
+        calculator: {
+          name: 'calculator',
+          description: '数式を計算します。加減乗除、べき乗、括弧などが使えます',
+          schema: {
+            type: 'function',
+            function: {
+              name: 'calculator',
+              description: '数式を計算します',
+              parameters: {
+                type: 'object',
+                properties: {
+                  expression: { type: 'string', description: '計算式（例: 2 + 3 * 4, (10 + 5) / 3）' },
+                },
+                required: ['expression'],
+              },
+            },
+          },
+          execute: async (args: { expression: string }) => {
+            try {
+              // 安全な数式評価（基本的な演算のみ許可）
+              const sanitized = args.expression.replace(/[^0-9+\-*/().%\s]/g, '');
+              const result = Function('"use strict"; return (' + sanitized + ')')();
+              context.logs.push(`[Tool] 計算: ${args.expression} = ${result}`);
+              return String(result);
+            } catch (error) {
+              return `計算エラー: ${args.expression}`;
+            }
+          },
+        },
+        dateTime: {
+          name: 'get_datetime',
+          description: '現在の日時を取得します',
+          schema: {
+            type: 'function',
+            function: {
+              name: 'get_datetime',
+              description: '現在の日時を取得します',
+              parameters: {
+                type: 'object',
+                properties: {
+                  format: { type: 'string', description: 'フォーマット（iso, date, time, full）', enum: ['iso', 'date', 'time', 'full'] },
+                },
+                required: [],
+              },
+            },
+          },
+          execute: async (args: { format?: string }) => {
+            const now = new Date();
+            const format = args.format || 'full';
+            let result: string;
+
+            switch (format) {
+              case 'iso':
+                result = now.toISOString();
+                break;
+              case 'date':
+                result = now.toLocaleDateString('ja-JP');
+                break;
+              case 'time':
+                result = now.toLocaleTimeString('ja-JP');
+                break;
+              default:
+                result = now.toLocaleString('ja-JP');
+            }
+            context.logs.push(`[Tool] 日時取得: ${result}`);
+            return result;
+          },
+        },
+        webSearch: {
+          name: 'web_search',
+          description: 'Web検索を実行します（シミュレーション）',
+          schema: {
+            type: 'function',
+            function: {
+              name: 'web_search',
+              description: 'Web検索を実行します',
+              parameters: {
+                type: 'object',
+                properties: {
+                  query: { type: 'string', description: '検索クエリ' },
+                },
+                required: ['query'],
+              },
+            },
+          },
+          execute: async (args: { query: string }) => {
+            context.logs.push(`[Tool] Web検索: ${args.query}`);
+            // 実際のWeb検索APIを統合する場合はここを実装
+            return `「${args.query}」の検索結果（シミュレーション）: この機能は実装予定です。`;
+          },
+        },
+      };
+
+      for (const toolId of builtinToolIds) {
+        const toolDef = builtinToolDefinitions[toolId];
+        if (toolDef) {
+          tools.push(toolDef);
+          context.logs.push(`[LLM] 組み込みツール登録: ${toolDef.name}`);
+        }
+      }
+    }
+
+    // OwlAgentをツールとしてロード
+    if (enableTools && toolAgentIds.length > 0) {
+      context.logs.push(`[LLM] OwlAgentツール: ${toolAgentIds.length}個をロード中...`);
+
+      for (const agentId of toolAgentIds) {
+        try {
+          // OwlAgentをAPIから取得
+          const agentResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/owlagents/${agentId}`);
+          if (!agentResponse.ok) {
+            context.logs.push(`[LLM] 警告: OwlAgent ${agentId} のロードに失敗`);
+            continue;
+          }
+
+          const agent = await agentResponse.json();
+
+          // ツール名を生成（英数字とアンダースコアのみ）
+          const toolName = agent.name.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+
+          // ツール定義を作成
+          const tool = {
+            type: 'owlAgentTool',
+            name: toolName,
+            agentId: agent.id,
+            agentName: agent.name,
+            description: agent.description || `${agent.name}を実行します`,
+            schema: {
+              type: 'function',
+              function: {
+                name: toolName,
+                description: agent.description || `${agent.name}を実行します`,
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    input: {
+                      type: 'string',
+                      description: 'ツールへの入力テキスト',
+                    },
+                  },
+                  required: ['input'],
+                },
+              },
+            },
+            // ツール実行関数
+            execute: async (input: string) => {
+              context.logs.push(`[LLM] OwlAgent実行: ${agent.name} (${agentId})`);
+              try {
+                const executeResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/owlagents/${agentId}/execute`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ input }),
+                });
+
+                if (!executeResponse.ok) {
+                  throw new Error(`OwlAgent実行エラー: ${executeResponse.status}`);
+                }
+
+                const result = await executeResponse.json();
+                context.logs.push(`[LLM] OwlAgent結果: ${String(result.output).slice(0, 100)}...`);
+                return result.output || result;
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+                context.logs.push(`[LLM] OwlAgentエラー: ${errorMsg}`);
+                return { error: errorMsg };
+              }
+            },
+          };
+
           tools.push(tool);
-          context.logs.push(`[LLM] ツール登録: ${tool.name} (${tool.agentName})`);
+          context.logs.push(`[LLM] ツール登録: ${toolName} (${agent.name})`);
+        } catch (error) {
+          context.logs.push(`[LLM] OwlAgent ${agentId} のロードエラー: ${error instanceof Error ? error.message : 'Unknown'}`);
+        }
+      }
+    }
+
+    // ノード接続からツールをロード（toolsハンドルに接続されたノード）
+    if (enableTools && inputs.tools && Array.isArray(inputs.tools)) {
+      context.logs.push(`[LLM] ノード接続ツール: ${inputs.tools.length}個をロード中...`);
+
+      for (const toolConnection of inputs.tools) {
+        const sourceNode = toolConnection.sourceNode as FlowNode;
+        if (!sourceNode) continue;
+
+        const nodeType = sourceNode.data.type;
+        const nodeConfig = sourceNode.data.config || {};
+
+        // ノードタイプに基づいてツール定義を生成
+        let toolDef: any = null;
+
+        switch (nodeType) {
+          case 'calculator':
+            toolDef = {
+              type: 'nodeBasedTool',
+              name: 'calculator',
+              description: '数式を計算します。加減乗除、べき乗、括弧などが使えます',
+              schema: {
+                type: 'function',
+                function: {
+                  name: 'calculator',
+                  description: '数式を計算します',
+                  parameters: {
+                    type: 'object',
+                    properties: {
+                      expression: { type: 'string', description: '計算式（例: 2 + 3 * 4, (10 + 5) / 3）' },
+                    },
+                    required: ['expression'],
+                  },
+                },
+              },
+              execute: async (args: { expression: string }) => {
+                try {
+                  const sanitized = args.expression.replace(/[^0-9+\-*/().%\s]/g, '');
+                  const result = Function('"use strict"; return (' + sanitized + ')')();
+                  context.logs.push(`[Tool] 計算: ${args.expression} = ${result}`);
+                  return String(result);
+                } catch (error) {
+                  return `計算エラー: ${args.expression}`;
+                }
+              },
+            };
+            break;
+
+          case 'readFile':
+            toolDef = {
+              type: 'nodeBasedTool',
+              name: 'read_file',
+              description: 'ファイルの内容を読み込みます',
+              schema: {
+                type: 'function',
+                function: {
+                  name: 'read_file',
+                  description: 'ファイルの内容を読み込みます',
+                  parameters: {
+                    type: 'object',
+                    properties: {
+                      filePath: { type: 'string', description: 'ファイルパス' },
+                    },
+                    required: ['filePath'],
+                  },
+                },
+              },
+              execute: async (args: { filePath: string }) => {
+                const fs = await import('fs').then(m => m.promises);
+                const path = await import('path');
+                const basePath = nodeConfig.basePath || './data';
+                const fullPath = path.join(basePath, args.filePath);
+                try {
+                  const content = await fs.readFile(fullPath, 'utf-8');
+                  context.logs.push(`[Tool] ファイル読み込み完了: ${fullPath}`);
+                  return content;
+                } catch (error) {
+                  return `ファイルが見つかりません: ${fullPath}`;
+                }
+              },
+            };
+            break;
+
+          case 'writeFile':
+            toolDef = {
+              type: 'nodeBasedTool',
+              name: 'write_file',
+              description: 'ファイルにテキストを書き込みます',
+              schema: {
+                type: 'function',
+                function: {
+                  name: 'write_file',
+                  description: 'ファイルにテキストを書き込みます',
+                  parameters: {
+                    type: 'object',
+                    properties: {
+                      filePath: { type: 'string', description: 'ファイルパス' },
+                      content: { type: 'string', description: '書き込む内容' },
+                    },
+                    required: ['filePath', 'content'],
+                  },
+                },
+              },
+              execute: async (args: { filePath: string; content: string }) => {
+                const fs = await import('fs').then(m => m.promises);
+                const path = await import('path');
+                const basePath = nodeConfig.basePath || './data/output';
+                const fullPath = path.join(basePath, args.filePath);
+                await fs.mkdir(path.dirname(fullPath), { recursive: true });
+                await fs.writeFile(fullPath, args.content, 'utf-8');
+                context.logs.push(`[Tool] ファイル書き込み完了: ${fullPath}`);
+                return `ファイルを書き込みました: ${fullPath}`;
+              },
+            };
+            break;
+
+          case 'customTool':
+            const toolName = (nodeConfig.toolName || 'custom_tool').replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+            const toolDescription = nodeConfig.toolDescription || 'カスタムツール';
+            const jsCode = nodeConfig.jsCode || 'return input;';
+            toolDef = {
+              type: 'nodeBasedTool',
+              name: toolName,
+              description: toolDescription,
+              schema: {
+                type: 'function',
+                function: {
+                  name: toolName,
+                  description: toolDescription,
+                  parameters: {
+                    type: 'object',
+                    properties: {
+                      input: { type: 'string', description: '入力テキスト' },
+                    },
+                    required: ['input'],
+                  },
+                },
+              },
+              execute: async (args: { input: string }) => {
+                try {
+                  const fn = new Function('input', jsCode);
+                  const result = fn(args.input);
+                  context.logs.push(`[Tool] カスタムツール実行: ${toolName}`);
+                  return typeof result === 'string' ? result : JSON.stringify(result);
+                } catch (error) {
+                  return `カスタムツールエラー: ${error instanceof Error ? error.message : 'Unknown'}`;
+                }
+              },
+            };
+            break;
+
+          case 'tool':
+            // 汎用ツールノード
+            const genericToolType = nodeConfig.toolType || 'api';
+            if (genericToolType === 'api' && nodeConfig.apiEndpoint) {
+              const apiToolName = 'api_call_' + sourceNode.id.slice(-6);
+              toolDef = {
+                type: 'nodeBasedTool',
+                name: apiToolName,
+                description: `API呼び出し: ${nodeConfig.apiEndpoint}`,
+                schema: {
+                  type: 'function',
+                  function: {
+                    name: apiToolName,
+                    description: `API呼び出し: ${nodeConfig.apiEndpoint}`,
+                    parameters: {
+                      type: 'object',
+                      properties: {
+                        body: { type: 'string', description: 'リクエストボディ（JSON文字列）' },
+                      },
+                      required: [],
+                    },
+                  },
+                },
+                execute: async (args: { body?: string }) => {
+                  try {
+                    const headers = nodeConfig.headers ? JSON.parse(nodeConfig.headers) : {};
+                    const method = nodeConfig.method || 'POST';
+                    const requestBody = args.body || nodeConfig.body || '';
+                    const response = await fetch(nodeConfig.apiEndpoint, {
+                      method,
+                      headers: { 'Content-Type': 'application/json', ...headers },
+                      ...(method !== 'GET' && requestBody ? { body: requestBody } : {}),
+                    });
+                    const result = await response.text();
+                    context.logs.push(`[Tool] API呼び出し完了: ${nodeConfig.apiEndpoint}`);
+                    return result;
+                  } catch (error) {
+                    return `APIエラー: ${error instanceof Error ? error.message : 'Unknown'}`;
+                  }
+                },
+              };
+            }
+            break;
+
+          default:
+            context.logs.push(`[LLM] 警告: ノードタイプ "${nodeType}" はツールとして未対応`);
+        }
+
+        if (toolDef) {
+          // 同じ名前のツールが既に存在する場合はスキップ
+          if (!tools.find(t => t.name === toolDef.name)) {
+            tools.push(toolDef);
+            context.logs.push(`[LLM] ノードツール登録: ${toolDef.name} (${sourceNode.data.label})`);
+          }
         }
       }
     }
@@ -209,10 +680,11 @@ const llmExecutor: NodeExecutor = {
             temperature,
           };
 
-          // ツールがある場合は追加
-          if (tools.length > 0) {
+          // ツールがある場合は追加（enableToolsで制御）
+          if (enableTools && tools.length > 0) {
             requestBody.tools = toolSchemas;
-            requestBody.tool_choice = 'auto';
+            requestBody.tool_choice = toolChoice; // auto, required
+            context.logs.push(`[LLM] ツール設定: tool_choice=${toolChoice}`);
           }
 
           const response = await fetch(url, {
@@ -261,7 +733,11 @@ const llmExecutor: NodeExecutor = {
 
               if (tool && tool.execute) {
                 try {
-                  toolResult = await tool.execute(toolArgs.input || JSON.stringify(toolArgs));
+                  // 組み込みツールにはオブジェクト、OwlAgentには文字列を渡す
+                  const executeArg = tool.type === 'owlAgentTool'
+                    ? (toolArgs.input || JSON.stringify(toolArgs))
+                    : toolArgs;
+                  toolResult = await tool.execute(executeArg);
                   context.logs.push(`[LLM] ツール結果: ${String(toolResult).slice(0, 100)}...`);
 
                   // returnDirectの場合は即座に結果を返す
@@ -320,9 +796,10 @@ const llmExecutor: NodeExecutor = {
             temperature,
           };
 
-          if (tools.length > 0) {
+          // ツールがある場合は追加（enableToolsで制御）
+          if (enableTools && tools.length > 0) {
             requestBody.tools = toolSchemas;
-            requestBody.tool_choice = 'auto';
+            requestBody.tool_choice = toolChoice; // auto, required
           }
 
           const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -361,7 +838,11 @@ const llmExecutor: NodeExecutor = {
 
               if (tool && tool.execute) {
                 try {
-                  toolResult = await tool.execute(toolArgs.input || JSON.stringify(toolArgs));
+                  // 組み込みツールにはオブジェクト、OwlAgentには文字列を渡す
+                  const executeArg = tool.type === 'owlAgentTool'
+                    ? (toolArgs.input || JSON.stringify(toolArgs))
+                    : toolArgs;
+                  toolResult = await tool.execute(executeArg);
                   if (tool.returnDirect) {
                     return { success: true, output: toolResult };
                   }
@@ -2116,103 +2597,6 @@ const owlAgentExecutor: NodeExecutor = {
   },
 };
 
-// Agent As Tool ノード（OwlAgentをツールとして使用）
-const agentAsToolExecutor: NodeExecutor = {
-  async execute(node, inputs, context) {
-    const data = node.data;
-    const config = data.config || {};
-    const agentId = config.agentId || data.agentId;
-    const toolName = config.toolName || data.toolName || 'agent_tool';
-    const toolDescription = config.toolDescription || data.toolDescription || 'OwlAgentをツールとして実行します';
-    const returnDirect = config.returnDirect || data.returnDirect || false;
-
-    if (!agentId) {
-      context.logs.push(`[AgentAsTool] ${node.data.label}: エラー - agentIdが指定されていません`);
-      return {
-        success: false,
-        output: null,
-        error: 'AgentAsToolノードにagentIdが設定されていません',
-      };
-    }
-
-    // OwlAgentを読み込んでツール定義を作成
-    const owlAgent = await loadOwlAgent(agentId);
-    if (!owlAgent) {
-      context.logs.push(`[AgentAsTool] ${node.data.label}: エラー - エージェント "${agentId}" が見つかりません`);
-      return {
-        success: false,
-        output: null,
-        error: `OwlAgent "${agentId}" が見つかりません`,
-      };
-    }
-
-    context.logs.push(`[AgentAsTool] ${node.data.label}: OwlAgent "${owlAgent.name}" をツールとして登録`);
-
-    // ツール定義を作成
-    const toolDefinition = {
-      type: 'agentAsTool',
-      name: toolName,
-      description: toolDescription,
-      agentId: agentId,
-      agentName: owlAgent.name,
-      returnDirect: returnDirect,
-      // ツールとして呼び出された時の実行関数
-      execute: async (toolInput: string) => {
-        context.logs.push(`[AgentAsTool] ツール "${toolName}" を実行 (エージェント: ${owlAgent.name})`);
-
-        // サブフローを実行
-        const subFlow = owlAgent.flow;
-        if (!subFlow || !subFlow.nodes || subFlow.nodes.length === 0) {
-          return { result: `エージェント "${owlAgent.name}" にはフローが定義されていません`, input: toolInput };
-        }
-
-        const subResult = await executeFlow(
-          subFlow.nodes,
-          subFlow.edges,
-          toolInput,
-          context.sessionId
-        );
-
-        // 実行ログをマージ
-        subResult.logs.forEach((log: string) => {
-          context.logs.push(`  [Tool:${toolName}] ${log}`);
-        });
-
-        if (!subResult.success) {
-          return { error: subResult.error || 'エージェント実行に失敗しました' };
-        }
-
-        return subResult.output;
-      },
-      // OpenAI Function Calling用のスキーマ
-      schema: {
-        type: 'function',
-        function: {
-          name: toolName,
-          description: toolDescription,
-          parameters: {
-            type: 'object',
-            properties: {
-              input: {
-                type: 'string',
-                description: 'ツールへの入力'
-              }
-            },
-            required: ['input']
-          }
-        }
-      }
-    };
-
-    context.logs.push(`[AgentAsTool] ${node.data.label}: ツール定義作成完了`);
-
-    return {
-      success: true,
-      output: toolDefinition,
-    };
-  },
-};
-
 // Conversational Agent ノード（会話型エージェント）
 const conversationalAgentExecutor: NodeExecutor = {
   async execute(node, inputs, context) {
@@ -2428,11 +2812,6 @@ const executorMap: Record<string, NodeExecutor> = {
   owlAgentReference: owlAgentExecutor,
   OwlAgentReference: owlAgentExecutor,
 
-  // Agent As Tool ノード（OwlAgentをツールとして使用）
-  agentAsTool: agentAsToolExecutor,
-  AgentAsTool: agentAsToolExecutor,
-  agentastool: agentAsToolExecutor,
-
   // Conversational Agent ノード
   conversationalAgent: conversationalAgentExecutor,
   ConversationalAgent: conversationalAgentExecutor,
@@ -2467,14 +2846,40 @@ export async function executeFlow(
   context.logs.push(`ノード数: ${nodes.length}, エッジ数: ${edges.length}`);
 
   try {
+    // toolsハンドルを通じてのみLLMに接続されているノードを特定（これらはフロー実行から除外）
+    const toolOnlyNodes = new Set<string>();
+    edges.forEach(e => {
+      if (e.targetHandle === 'tools') {
+        // このノードはtoolsハンドルに接続されている
+        // 他の出力接続があるかチェック
+        const sourceNode = nodes.find(n => n.id === e.source);
+        if (sourceNode) {
+          const otherOutputEdges = edges.filter(
+            oe => oe.source === e.source && oe.targetHandle !== 'tools'
+          );
+          if (otherOutputEdges.length === 0) {
+            // toolsハンドルへの接続のみなので、フロー実行から除外
+            toolOnlyNodes.add(e.source);
+          }
+        }
+      }
+    });
+
+    if (toolOnlyNodes.size > 0) {
+      context.logs.push(`ツールノード (フロー実行から除外): ${Array.from(toolOnlyNodes).join(', ')}`);
+    }
+
     // トポロジカルソート
     const sortedNodes = topologicalSort(nodes, edges);
-    context.logs.push(`実行順序: ${sortedNodes.map(n => n.data.label).join(' → ')}`);
+
+    // ツールノードを実行順序から除外
+    const executableNodes = sortedNodes.filter(n => !toolOnlyNodes.has(n.id));
+    context.logs.push(`実行順序: ${executableNodes.map(n => n.data.label).join(' → ')}`);
 
     let finalOutput: any = null;
 
     // 各ノードを順番に実行
-    for (const node of sortedNodes) {
+    for (const node of executableNodes) {
       // 複数のタイプ候補をチェック（data.type, type, category順）
       const typeVariants = [
         node.data.type,
@@ -2499,7 +2904,7 @@ export async function executeFlow(
       }
 
       // 入力を収集
-      const inputs = collectNodeInputs(node, edges, context.nodeOutputs);
+      const inputs = collectNodeInputs(node, edges, context.nodeOutputs, nodes);
 
       // ノード実行開始時刻を記録
       const nodeStartTime = Date.now();
@@ -2667,7 +3072,7 @@ export async function executeFlowFromNode(
       }
 
       // 入力を収集
-      const inputs = collectNodeInputs(node, edges, context.nodeOutputs);
+      const inputs = collectNodeInputs(node, edges, context.nodeOutputs, nodes);
 
       // ノード実行開始時刻を記録
       const nodeStartTime = Date.now();

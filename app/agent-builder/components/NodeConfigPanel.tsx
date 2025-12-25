@@ -511,6 +511,176 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
           />
         );
 
+      case 'builtinToolSelect':
+        // 組み込みツールを選択するためのUI
+        const builtinToolOptions = [
+          { id: 'writeFile', name: 'Write File', icon: '✍️', description: 'ファイルを書き込む' },
+          { id: 'readFile', name: 'Read File', icon: '📖', description: 'ファイルを読み込む' },
+          { id: 'webSearch', name: 'Web Search', icon: '🔍', description: 'Web検索を実行' },
+          { id: 'calculator', name: 'Calculator', icon: '🧮', description: '数式を計算' },
+          { id: 'dateTime', name: 'Date/Time', icon: '📅', description: '現在の日時を取得' },
+        ];
+        const selectedBuiltinTools: string[] = Array.isArray(value) ? value : [];
+        return (
+          <Box key={input.name}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+              <Typography sx={{ color: '#888', fontSize: '0.8rem' }}>
+                {input.label}
+              </Typography>
+              {input.description && (
+                <Tooltip title={input.description} arrow>
+                  <HelpOutlineIcon sx={{ fontSize: 14, color: '#666' }} />
+                </Tooltip>
+              )}
+            </Box>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              {builtinToolOptions.map((tool) => {
+                const isSelected = selectedBuiltinTools.includes(tool.id);
+                return (
+                  <Chip
+                    key={tool.id}
+                    icon={<span style={{ fontSize: '0.9rem' }}>{tool.icon}</span>}
+                    label={tool.name}
+                    onClick={() => {
+                      const newValue = isSelected
+                        ? selectedBuiltinTools.filter((id) => id !== tool.id)
+                        : [...selectedBuiltinTools, tool.id];
+                      handleConfigChange(input.name, newValue);
+                    }}
+                    sx={{
+                      bgcolor: isSelected ? '#6366f1' : '#252536',
+                      color: '#fff',
+                      border: isSelected ? 'none' : '1px solid #3d3d54',
+                      cursor: 'pointer',
+                      '&:hover': {
+                        bgcolor: isSelected ? '#5558e3' : '#3d3d54',
+                      },
+                    }}
+                  />
+                );
+              })}
+            </Box>
+            {selectedBuiltinTools.length > 0 && (
+              <Typography sx={{ color: '#6366f1', fontSize: '0.75rem', mt: 1 }}>
+                選択中: {selectedBuiltinTools.length}個のツール
+              </Typography>
+            )}
+          </Box>
+        );
+
+      case 'agentMultiSelect':
+        // OwlAgentを複数選択するためのUI
+        const selectedAgents: string[] = Array.isArray(value) ? value : [];
+        return (
+          <Box key={input.name}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+              <Typography sx={{ color: '#888', fontSize: '0.8rem' }}>
+                {input.label}
+              </Typography>
+              {input.description && (
+                <Tooltip title={input.description} arrow>
+                  <HelpOutlineIcon sx={{ fontSize: 14, color: '#666' }} />
+                </Tooltip>
+              )}
+            </Box>
+            {savedOwlAgents.length === 0 ? (
+              <Alert severity="info" sx={{ bgcolor: 'rgba(33, 150, 243, 0.1)', color: '#64B5F6' }}>
+                保存されたOwlAgentがありません
+              </Alert>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {savedOwlAgents.map((agent) => {
+                  const isSelected = selectedAgents.includes(agent.id);
+                  return (
+                    <Box
+                      key={agent.id}
+                      onClick={() => {
+                        const newValue = isSelected
+                          ? selectedAgents.filter((id) => id !== agent.id)
+                          : [...selectedAgents, agent.id];
+                        handleConfigChange(input.name, newValue);
+                      }}
+                      sx={{
+                        p: 1.5,
+                        borderRadius: 1,
+                        border: isSelected ? '2px solid #6366f1' : '1px solid #3d3d54',
+                        bgcolor: isSelected ? 'rgba(99, 102, 241, 0.1)' : '#252536',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        '&:hover': {
+                          borderColor: '#6366f1',
+                          bgcolor: 'rgba(99, 102, 241, 0.05)',
+                        },
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box
+                          sx={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: '4px',
+                            border: isSelected ? 'none' : '2px solid #555',
+                            bgcolor: isSelected ? '#6366f1' : 'transparent',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          {isSelected && (
+                            <CheckCircleOutlineIcon sx={{ fontSize: 16, color: '#fff' }} />
+                          )}
+                        </Box>
+                        <Typography sx={{ fontSize: '1rem' }}>🦉</Typography>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography sx={{ color: '#fff', fontSize: '0.85rem', fontWeight: 500 }}>
+                            {agent.name}
+                          </Typography>
+                          {agent.description && (
+                            <Typography sx={{ color: '#888', fontSize: '0.7rem', mt: 0.25 }}>
+                              {agent.description.slice(0, 50)}{agent.description.length > 50 ? '...' : ''}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Box>
+            )}
+            {selectedAgents.length > 0 && (
+              <Box sx={{ mt: 1.5, p: 1, bgcolor: '#1a1a2e', borderRadius: 1 }}>
+                <Typography sx={{ color: '#6366f1', fontSize: '0.75rem', fontWeight: 600 }}>
+                  選択中: {selectedAgents.length}個のエージェント
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                  {selectedAgents.map((id) => {
+                    const agent = savedOwlAgents.find((a) => a.id === id);
+                    return (
+                      <Chip
+                        key={id}
+                        label={agent?.name || id}
+                        size="small"
+                        onDelete={() => {
+                          handleConfigChange(
+                            input.name,
+                            selectedAgents.filter((agentId) => agentId !== id)
+                          );
+                        }}
+                        sx={{
+                          bgcolor: '#FF5722',
+                          color: '#fff',
+                          fontSize: '0.7rem',
+                          '& .MuiChip-deleteIcon': { color: 'rgba(255,255,255,0.7)' },
+                        }}
+                      />
+                    );
+                  })}
+                </Box>
+              </Box>
+            )}
+          </Box>
+        );
+
       default:
         return (
           <Box key={input.name}>
