@@ -183,7 +183,13 @@ const llmExecutor: NodeExecutor = {
     const builtinToolIds: string[] = config.builtinTools || []; // 選択された組み込みツールのID配列
     const toolAgentIds: string[] = config.toolAgents || []; // 選択されたOwlAgentのID配列
     const toolChoice = config.toolChoice || 'auto'; // ツール利用の判断方法: auto, required
+    const toolSettings: Record<string, Record<string, any>> = config.toolSettings || {}; // ツールごとの詳細設定
     const userMessage = inputs.input || inputs.prompt || context.input;
+
+    // ツール設定を取得するヘルパー関数
+    const getToolSetting = (toolId: string, key: string, defaultValue: any) => {
+      return toolSettings[toolId]?.[key] ?? defaultValue;
+    };
 
     // ツール配列
     const tools: any[] = [];
@@ -215,7 +221,7 @@ const llmExecutor: NodeExecutor = {
           execute: async (args: { filePath: string; content: string }) => {
             const fs = await import('fs').then(m => m.promises);
             const path = await import('path');
-            const basePath = config.writeFileBasePath || './data/output';
+            const basePath = getToolSetting('writeFile', 'basePath', './data/output');
             const fullPath = path.join(basePath, args.filePath);
 
             // ディレクトリを作成
@@ -245,7 +251,7 @@ const llmExecutor: NodeExecutor = {
           execute: async (args: { filePath: string }) => {
             const fs = await import('fs').then(m => m.promises);
             const path = await import('path');
-            const basePath = config.readFileBasePath || './data';
+            const basePath = getToolSetting('readFile', 'basePath', './data');
             const fullPath = path.join(basePath, args.filePath);
 
             try {
@@ -306,22 +312,28 @@ const llmExecutor: NodeExecutor = {
           execute: async (args: { format?: string }) => {
             const now = new Date();
             const format = args.format || 'full';
+            const timezone = getToolSetting('dateTime', 'timezone', 'Asia/Tokyo');
             let result: string;
 
-            switch (format) {
-              case 'iso':
-                result = now.toISOString();
-                break;
-              case 'date':
-                result = now.toLocaleDateString('ja-JP');
-                break;
-              case 'time':
-                result = now.toLocaleTimeString('ja-JP');
-                break;
-              default:
-                result = now.toLocaleString('ja-JP');
+            try {
+              switch (format) {
+                case 'iso':
+                  result = now.toISOString();
+                  break;
+                case 'date':
+                  result = now.toLocaleDateString('ja-JP', { timeZone: timezone });
+                  break;
+                case 'time':
+                  result = now.toLocaleTimeString('ja-JP', { timeZone: timezone });
+                  break;
+                default:
+                  result = now.toLocaleString('ja-JP', { timeZone: timezone });
+              }
+            } catch (e) {
+              // タイムゾーンが無効な場合はデフォルトを使用
+              result = now.toLocaleString('ja-JP');
             }
-            context.logs.push(`[Tool] 日時取得: ${result}`);
+            context.logs.push(`[Tool] 日時取得: ${result} (TZ: ${timezone})`);
             return result;
           },
         },
@@ -343,9 +355,288 @@ const llmExecutor: NodeExecutor = {
             },
           },
           execute: async (args: { query: string }) => {
-            context.logs.push(`[Tool] Web検索: ${args.query}`);
+            const maxResults = getToolSetting('webSearch', 'maxResults', 5);
+            context.logs.push(`[Tool] Web検索: ${args.query} (最大${maxResults}件)`);
             // 実際のWeb検索APIを統合する場合はここを実装
-            return `「${args.query}」の検索結果（シミュレーション）: この機能は実装予定です。`;
+            return `「${args.query}」の検索結果（シミュレーション）: この機能は実装予定です。最大${maxResults}件取得設定。`;
+          },
+        },
+        webScraper: {
+          name: 'web_scraper',
+          description: 'Webページの内容を取得します',
+          schema: {
+            type: 'function',
+            function: {
+              name: 'web_scraper',
+              description: 'Webページの内容を取得します',
+              parameters: {
+                type: 'object',
+                properties: {
+                  url: { type: 'string', description: '取得するWebページのURL' },
+                },
+                required: ['url'],
+              },
+            },
+          },
+          execute: async (args: { url: string }) => {
+            try {
+              const maxLength = getToolSetting('webScraper', 'maxLength', 5000);
+              const removeScripts = getToolSetting('webScraper', 'removeScripts', true);
+              context.logs.push(`[Tool] Webスクレイピング: ${args.url}`);
+              const response = await fetch(args.url);
+              let html = await response.text();
+              // HTMLからテキストを抽出
+              if (removeScripts) {
+                html = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+              }
+              const textContent = html
+                .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, maxLength);
+              return textContent;
+            } catch (error) {
+              return `Webページ取得エラー: ${error instanceof Error ? error.message : 'Unknown'}`;
+            }
+          },
+        },
+        pdfLoader: {
+          name: 'pdf_loader',
+          description: 'PDFファイルを読み込みます',
+          schema: {
+            type: 'function',
+            function: {
+              name: 'pdf_loader',
+              description: 'PDFファイルを読み込みます',
+              parameters: {
+                type: 'object',
+                properties: {
+                  filePath: { type: 'string', description: 'PDFファイルのパス' },
+                },
+                required: ['filePath'],
+              },
+            },
+          },
+          execute: async (args: { filePath: string }) => {
+            const fs = await import('fs').then(m => m.promises);
+            const path = await import('path');
+            const basePath = getToolSetting('pdfLoader', 'basePath', './data');
+            const fullPath = path.join(basePath, args.filePath);
+            try {
+              // PDFの解析にはpdf-parseライブラリが必要
+              // ここでは簡易版としてファイル存在確認のみ
+              await fs.access(fullPath);
+              context.logs.push(`[Tool] PDF読み込み: ${fullPath}`);
+              return `PDFファイルを検出: ${fullPath} (完全な解析にはpdf-parseライブラリが必要です)`;
+            } catch (error) {
+              return `PDFファイルが見つかりません: ${fullPath}`;
+            }
+          },
+        },
+        csvLoader: {
+          name: 'csv_loader',
+          description: 'CSVファイルを読み込みます',
+          schema: {
+            type: 'function',
+            function: {
+              name: 'csv_loader',
+              description: 'CSVファイルを読み込みます',
+              parameters: {
+                type: 'object',
+                properties: {
+                  filePath: { type: 'string', description: 'CSVファイルのパス' },
+                },
+                required: ['filePath'],
+              },
+            },
+          },
+          execute: async (args: { filePath: string }) => {
+            const fs = await import('fs').then(m => m.promises);
+            const path = await import('path');
+            const basePath = getToolSetting('csvLoader', 'basePath', './data');
+            const delimiter = getToolSetting('csvLoader', 'delimiter', ',');
+            const fullPath = path.join(basePath, args.filePath);
+            try {
+              const content = await fs.readFile(fullPath, 'utf-8');
+              const lines = content.split('\n');
+              const headers = lines[0]?.split(delimiter) || [];
+              const rows = lines.slice(1).filter(l => l.trim());
+              context.logs.push(`[Tool] CSV読み込み完了: ${fullPath} (${rows.length}行, 区切り: "${delimiter}")`);
+              return JSON.stringify({ headers, rowCount: rows.length, preview: lines.slice(0, 5).join('\n') });
+            } catch (error) {
+              return `CSVファイルが見つかりません: ${fullPath}`;
+            }
+          },
+        },
+        jsonLoader: {
+          name: 'json_loader',
+          description: 'JSONファイルを読み込みます',
+          schema: {
+            type: 'function',
+            function: {
+              name: 'json_loader',
+              description: 'JSONファイルを読み込みます',
+              parameters: {
+                type: 'object',
+                properties: {
+                  filePath: { type: 'string', description: 'JSONファイルのパス' },
+                },
+                required: ['filePath'],
+              },
+            },
+          },
+          execute: async (args: { filePath: string }) => {
+            const fs = await import('fs').then(m => m.promises);
+            const path = await import('path');
+            const basePath = getToolSetting('jsonLoader', 'basePath', './data');
+            const fullPath = path.join(basePath, args.filePath);
+            try {
+              const content = await fs.readFile(fullPath, 'utf-8');
+              const parsed = JSON.parse(content);
+              context.logs.push(`[Tool] JSON読み込み完了: ${fullPath}`);
+              return JSON.stringify(parsed, null, 2).slice(0, 5000);
+            } catch (error) {
+              return `JSONファイル読み込みエラー: ${error instanceof Error ? error.message : 'Unknown'}`;
+            }
+          },
+        },
+        textLoader: {
+          name: 'text_loader',
+          description: 'テキストファイルを読み込みます',
+          schema: {
+            type: 'function',
+            function: {
+              name: 'text_loader',
+              description: 'テキストファイルを読み込みます',
+              parameters: {
+                type: 'object',
+                properties: {
+                  filePath: { type: 'string', description: 'テキストファイルのパス' },
+                },
+                required: ['filePath'],
+              },
+            },
+          },
+          execute: async (args: { filePath: string }) => {
+            const fs = await import('fs').then(m => m.promises);
+            const path = await import('path');
+            const basePath = getToolSetting('textLoader', 'basePath', './data');
+            const maxLength = getToolSetting('textLoader', 'maxLength', 10000);
+            const fullPath = path.join(basePath, args.filePath);
+            try {
+              const content = await fs.readFile(fullPath, 'utf-8');
+              context.logs.push(`[Tool] テキスト読み込み完了: ${fullPath}`);
+              return content.slice(0, maxLength);
+            } catch (error) {
+              return `テキストファイルが見つかりません: ${fullPath}`;
+            }
+          },
+        },
+        docxLoader: {
+          name: 'docx_loader',
+          description: 'Wordファイル（.docx）を読み込みます',
+          schema: {
+            type: 'function',
+            function: {
+              name: 'docx_loader',
+              description: 'Wordファイルを読み込みます',
+              parameters: {
+                type: 'object',
+                properties: {
+                  filePath: { type: 'string', description: 'DOCXファイルのパス' },
+                },
+                required: ['filePath'],
+              },
+            },
+          },
+          execute: async (args: { filePath: string }) => {
+            const fs = await import('fs').then(m => m.promises);
+            const path = await import('path');
+            const basePath = getToolSetting('docxLoader', 'basePath', './data');
+            const fullPath = path.join(basePath, args.filePath);
+            try {
+              await fs.access(fullPath);
+              context.logs.push(`[Tool] DOCX検出: ${fullPath}`);
+              return `DOCXファイルを検出: ${fullPath} (完全な解析にはmammothライブラリが必要です)`;
+            } catch (error) {
+              return `DOCXファイルが見つかりません: ${fullPath}`;
+            }
+          },
+        },
+        excelLoader: {
+          name: 'excel_loader',
+          description: 'Excelファイル（.xlsx）を読み込みます',
+          schema: {
+            type: 'function',
+            function: {
+              name: 'excel_loader',
+              description: 'Excelファイルを読み込みます',
+              parameters: {
+                type: 'object',
+                properties: {
+                  filePath: { type: 'string', description: 'Excelファイルのパス' },
+                  sheetName: { type: 'string', description: '読み込むシート名（省略時は最初のシート）' },
+                },
+                required: ['filePath'],
+              },
+            },
+          },
+          execute: async (args: { filePath: string; sheetName?: string }) => {
+            const fs = await import('fs').then(m => m.promises);
+            const path = await import('path');
+            const basePath = getToolSetting('excelLoader', 'basePath', './data');
+            const defaultSheet = getToolSetting('excelLoader', 'sheetName', '');
+            const sheetName = args.sheetName || defaultSheet;
+            const fullPath = path.join(basePath, args.filePath);
+            try {
+              await fs.access(fullPath);
+              const sheetInfo = sheetName ? `, シート: ${sheetName}` : '';
+              context.logs.push(`[Tool] Excel検出: ${fullPath}${sheetInfo}`);
+              return `Excelファイルを検出: ${fullPath}${sheetInfo} (完全な解析にはxlsxライブラリが必要です)`;
+            } catch (error) {
+              return `Excelファイルが見つかりません: ${fullPath}`;
+            }
+          },
+        },
+        jsonParser: {
+          name: 'json_parser',
+          description: 'JSONを解析・変換します',
+          schema: {
+            type: 'function',
+            function: {
+              name: 'json_parser',
+              description: 'JSONを解析・変換します',
+              parameters: {
+                type: 'object',
+                properties: {
+                  jsonString: { type: 'string', description: '解析するJSON文字列' },
+                  path: { type: 'string', description: '抽出するパス（例: data.items[0].name）' },
+                },
+                required: ['jsonString'],
+              },
+            },
+          },
+          execute: async (args: { jsonString: string; path?: string }) => {
+            try {
+              const parsed = JSON.parse(args.jsonString);
+              if (args.path) {
+                // パスを使って値を抽出
+                const value = args.path.split('.').reduce((obj, key) => {
+                  const match = key.match(/^(\w+)\[(\d+)\]$/);
+                  if (match) {
+                    return obj?.[match[1]]?.[parseInt(match[2])];
+                  }
+                  return obj?.[key];
+                }, parsed);
+                context.logs.push(`[Tool] JSON解析: パス ${args.path}`);
+                return JSON.stringify(value, null, 2);
+              }
+              context.logs.push(`[Tool] JSON解析完了`);
+              return JSON.stringify(parsed, null, 2);
+            } catch (error) {
+              return `JSON解析エラー: ${error instanceof Error ? error.message : 'Invalid JSON'}`;
+            }
           },
         },
       };
@@ -2867,6 +3158,22 @@ export async function executeFlow(
 
     if (toolOnlyNodes.size > 0) {
       context.logs.push(`ツールノード (フロー実行から除外): ${Array.from(toolOnlyNodes).join(', ')}`);
+      // ツールノードとして除外されたノードのログを記録（ステータス: skipped）
+      toolOnlyNodes.forEach(nodeId => {
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+          context.nodeExecutionLogs.push({
+            nodeId: node.id,
+            nodeName: node.data.label,
+            nodeType: node.data.type || node.type || 'unknown',
+            inputs: {},
+            output: '(LLMのツールとして使用されるため、直接実行はスキップ)',
+            executionTime: 0,
+            status: 'skipped',
+            timestamp: Date.now(),
+          });
+        }
+      });
     }
 
     // トポロジカルソート
@@ -3003,6 +3310,7 @@ export async function executeFlow(
       executionTime: Date.now() - startTime,
       logs: context.logs,
       error: error instanceof Error ? error.message : 'Unknown error',
+      nodeExecutionLogs: context.nodeExecutionLogs,
     };
   }
 }

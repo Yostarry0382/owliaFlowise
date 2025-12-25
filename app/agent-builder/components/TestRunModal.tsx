@@ -40,6 +40,7 @@ import InputIcon from '@mui/icons-material/Input';
 import OutputIcon from '@mui/icons-material/Output';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import PauseCircleIcon from '@mui/icons-material/PauseCircle';
+import SkipNextIcon from '@mui/icons-material/SkipNext';
 import { Node, Edge } from 'reactflow';
 import { CustomNodeData } from './CustomNode';
 import HumanReviewModal, { PendingReview, ReviewDecision } from './HumanReviewModal';
@@ -773,7 +774,8 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
                           borderLeft: `3px solid ${
                             log.status === 'success' ? '#4CAF50' :
                             log.status === 'error' ? '#f44336' :
-                            log.status === 'pending_review' ? '#FFD700' : '#888'
+                            log.status === 'pending_review' ? '#FFD700' :
+                            log.status === 'skipped' ? '#9E9E9E' : '#888'
                           }`,
                           mb: 0.5,
                         }}
@@ -796,6 +798,7 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
                             {log.status === 'success' && <CheckCircleIcon sx={{ color: '#4CAF50', fontSize: 16 }} />}
                             {log.status === 'error' && <ErrorIcon sx={{ color: '#f44336', fontSize: 16 }} />}
                             {log.status === 'pending_review' && <PauseCircleIcon sx={{ color: '#FFD700', fontSize: 16 }} />}
+                            {log.status === 'skipped' && <SkipNextIcon sx={{ color: '#9E9E9E', fontSize: 16 }} />}
                             <Typography sx={{ fontSize: '0.8rem', fontWeight: 600 }}>
                               {log.nodeName}
                             </Typography>
