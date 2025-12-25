@@ -224,6 +224,7 @@ export const CHAT_MODEL_NODES: NodeTypeDefinition[] = [
     ],
     inputHandles: [
       { id: 'input', label: 'Input', type: 'any', position: 'left' },
+      { id: 'tools', label: 'Tools', type: 'tool', position: 'top', multiple: true },
     ],
     outputHandles: [
       { id: 'output', label: 'Output', type: 'any', position: 'right' },
@@ -696,7 +697,9 @@ export const TOOL_NODES: NodeTypeDefinition[] = [
     description: 'ファイル書き込み',
     color: '#607D8B',
     inputs: [
-      { name: 'basePath', label: 'Base Path', type: 'string' },
+      { name: 'basePath', label: 'Base Path', type: 'string', default: './data/output', description: '出力先のベースディレクトリ' },
+      { name: 'filePath', label: 'File Path', type: 'string', required: true, placeholder: 'output.txt', description: 'ファイルパス（basePath からの相対パス）' },
+      { name: 'overwrite', label: 'Overwrite', type: 'boolean', default: true, description: '既存ファイルを上書きするか' },
     ],
     inputHandles: [
       { id: 'input', label: 'Content', type: 'any', position: 'left' },
@@ -732,6 +735,28 @@ export const OWL_AGENT_NODE: NodeTypeDefinition = {
 };
 
 // ============================================
+// Agent As Tool Node (OwlAgentをツールとして使用)
+// ============================================
+export const AGENT_AS_TOOL_NODE: NodeTypeDefinition = {
+  type: 'agentAsTool',
+  label: 'Agent As Tool',
+  category: 'tools',
+  icon: '🦉🔧',
+  description: 'OwlAgentをツールとして使用。LLMエージェントがこのツールを呼び出してOwlAgentを実行できます。',
+  color: '#FF5722',
+  inputs: [
+    { name: 'agentId', label: 'Agent', type: 'select', required: true, options: [], description: 'ツールとして使用するOwlAgent' },
+    { name: 'toolName', label: 'Tool Name', type: 'string', required: true, placeholder: 'my_agent_tool', description: 'ツールの名前（LLMが使用する識別子）' },
+    { name: 'toolDescription', label: 'Tool Description', type: 'text', required: true, placeholder: 'このエージェントは○○を実行します', description: 'ツールの説明（LLMがいつこのツールを使うか判断するために使用）' },
+    { name: 'returnDirect', label: 'Return Direct', type: 'boolean', default: false, description: '有効にすると、このツールの結果を直接最終出力として返します' },
+  ],
+  inputHandles: [],
+  outputHandles: [
+    { id: 'tool', label: 'Tool', type: 'tool', position: 'right' },
+  ],
+};
+
+// ============================================
 // 全ノード定義の統合
 // ============================================
 export const ALL_NODE_DEFINITIONS: NodeTypeDefinition[] = [
@@ -742,6 +767,7 @@ export const ALL_NODE_DEFINITIONS: NodeTypeDefinition[] = [
   ...DOCUMENT_LOADER_NODES,
   ...MEMORY_NODES,
   ...TOOL_NODES,
+  AGENT_AS_TOOL_NODE,
   OWL_AGENT_NODE,
 ];
 

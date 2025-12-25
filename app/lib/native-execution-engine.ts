@@ -147,15 +147,31 @@ const promptTemplateExecutor: NodeExecutor = {
   },
 };
 
-// LLM ノード (Azure Chat OpenAI / ChatOpenAI)
+// LLM ノード (Azure Chat OpenAI / ChatOpenAI) - Function Calling対応
 const llmExecutor: NodeExecutor = {
   async execute(node, inputs, context) {
     const config = node.data.config || {};
     const systemMessage = config.systemMessage || '';
     const temperature = config.temperature || 0.7;
+    const maxIterations = config.maxIterations || 5; // ツール呼び出しの最大回数
     const userMessage = inputs.input || inputs.prompt || context.input;
 
-    context.logs.push(`[LLM] ${node.data.label}: API呼び出し開始`);
+    // ツール入力を処理（AgentAsToolノードからの接続）
+    const toolInputs = inputs.tools;
+    const tools: any[] = [];
+
+    if (toolInputs) {
+      // 単一のツールまたは配列
+      const toolArray = Array.isArray(toolInputs) ? toolInputs : [toolInputs];
+      for (const tool of toolArray) {
+        if (tool && tool.type === 'agentAsTool' && tool.schema) {
+          tools.push(tool);
+          context.logs.push(`[LLM] ツール登録: ${tool.name} (${tool.agentName})`);
+        }
+      }
+    }
+
+    context.logs.push(`[LLM] ${node.data.label}: API呼び出し開始 (ツール数: ${tools.length})`);
 
     // Azure OpenAI設定
     const azureApiKey = process.env.AZURE_OPENAI_API_KEY;
@@ -166,37 +182,122 @@ const llmExecutor: NodeExecutor = {
     // 通常のOpenAI設定
     const openaiApiKey = process.env.OPENAI_API_KEY;
 
+    // Function Calling用のツールスキーマを作成
+    const toolSchemas = tools.map(t => t.schema);
+
+    // メッセージ履歴（ツール呼び出しループ用）
+    const messages: Array<{ role: string; content: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }> = [
+      ...(systemMessage ? [{ role: 'system', content: systemMessage }] : []),
+      { role: 'user', content: String(userMessage) },
+    ];
+
     // Azure OpenAIを優先
     if (azureApiKey && azureEndpoint && azureDeployment) {
       try {
         const url = `${azureEndpoint}/openai/deployments/${azureDeployment}/chat/completions?api-version=${azureApiVersion}`;
         context.logs.push(`[LLM] Azure OpenAI使用: ${azureDeployment}`);
 
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'api-key': azureApiKey,
-          },
-          body: JSON.stringify({
-            messages: [
-              ...(systemMessage ? [{ role: 'system', content: systemMessage }] : []),
-              { role: 'user', content: String(userMessage) },
-            ],
-            temperature,
-          }),
-        });
+        let iteration = 0;
+        let finalOutput = '';
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Azure OpenAI API error: ${response.status} - ${errorText}`);
+        // ツール呼び出しループ
+        while (iteration < maxIterations) {
+          iteration++;
+
+          const requestBody: any = {
+            messages,
+            temperature,
+          };
+
+          // ツールがある場合は追加
+          if (tools.length > 0) {
+            requestBody.tools = toolSchemas;
+            requestBody.tool_choice = 'auto';
+          }
+
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'api-key': azureApiKey,
+            },
+            body: JSON.stringify(requestBody),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Azure OpenAI API error: ${response.status} - ${errorText}`);
+          }
+
+          const data = await response.json();
+          const choice = data.choices?.[0];
+          const message = choice?.message;
+
+          if (!message) {
+            throw new Error('No message in response');
+          }
+
+          // ツール呼び出しがあるかチェック
+          if (message.tool_calls && message.tool_calls.length > 0) {
+            context.logs.push(`[LLM] ツール呼び出し検出: ${message.tool_calls.length}件`);
+
+            // アシスタントメッセージを追加
+            messages.push({
+              role: 'assistant',
+              content: message.content || null,
+              tool_calls: message.tool_calls,
+            });
+
+            // 各ツールを実行
+            for (const toolCall of message.tool_calls) {
+              const toolName = toolCall.function.name;
+              const toolArgs = JSON.parse(toolCall.function.arguments || '{}');
+
+              context.logs.push(`[LLM] ツール実行: ${toolName}(${JSON.stringify(toolArgs).slice(0, 50)}...)`);
+
+              // 対応するツールを探す
+              const tool = tools.find(t => t.name === toolName);
+              let toolResult: any;
+
+              if (tool && tool.execute) {
+                try {
+                  toolResult = await tool.execute(toolArgs.input || JSON.stringify(toolArgs));
+                  context.logs.push(`[LLM] ツール結果: ${String(toolResult).slice(0, 100)}...`);
+
+                  // returnDirectの場合は即座に結果を返す
+                  if (tool.returnDirect) {
+                    context.logs.push(`[LLM] ${node.data.label}: Return Direct - ツール結果を直接返します`);
+                    return { success: true, output: toolResult };
+                  }
+                } catch (error) {
+                  toolResult = { error: error instanceof Error ? error.message : 'ツール実行エラー' };
+                  context.logs.push(`[LLM] ツールエラー: ${toolResult.error}`);
+                }
+              } else {
+                toolResult = { error: `ツール "${toolName}" が見つかりません` };
+                context.logs.push(`[LLM] 警告: ${toolResult.error}`);
+              }
+
+              // ツール結果をメッセージに追加
+              messages.push({
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                name: toolName,
+                content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult),
+              });
+            }
+          } else {
+            // ツール呼び出しなし = 最終応答
+            finalOutput = message.content || '';
+            context.logs.push(`[LLM] ${node.data.label}: Azure OpenAI応答取得成功 (イテレーション: ${iteration})`);
+            return { success: true, output: finalOutput };
+          }
         }
 
-        const data = await response.json();
-        const output = data.choices?.[0]?.message?.content || '';
+        // 最大イテレーション到達
+        context.logs.push(`[LLM] 警告: 最大イテレーション(${maxIterations})に到達しました`);
+        return { success: true, output: finalOutput || '[最大イテレーション到達]' };
 
-        context.logs.push(`[LLM] ${node.data.label}: Azure OpenAI応答取得成功`);
-        return { success: true, output };
       } catch (error) {
         context.logs.push(`[LLM] ${node.data.label}: Azure OpenAI呼び出し失敗 - ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
@@ -206,31 +307,86 @@ const llmExecutor: NodeExecutor = {
     if (openaiApiKey && openaiApiKey.startsWith('sk-')) {
       try {
         context.logs.push(`[LLM] 通常のOpenAI API使用`);
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openaiApiKey}`,
-          },
-          body: JSON.stringify({
-            model: config.modelName || 'gpt-3.5-turbo',
-            messages: [
-              ...(systemMessage ? [{ role: 'system', content: systemMessage }] : []),
-              { role: 'user', content: String(userMessage) },
-            ],
-            temperature,
-          }),
-        });
 
-        if (!response.ok) {
-          throw new Error(`OpenAI API error: ${response.status}`);
+        let iteration = 0;
+        let finalOutput = '';
+
+        while (iteration < maxIterations) {
+          iteration++;
+
+          const requestBody: any = {
+            model: config.modelName || 'gpt-4o',
+            messages,
+            temperature,
+          };
+
+          if (tools.length > 0) {
+            requestBody.tools = toolSchemas;
+            requestBody.tool_choice = 'auto';
+          }
+
+          const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${openaiApiKey}`,
+            },
+            body: JSON.stringify(requestBody),
+          });
+
+          if (!response.ok) {
+            throw new Error(`OpenAI API error: ${response.status}`);
+          }
+
+          const data = await response.json();
+          const choice = data.choices?.[0];
+          const message = choice?.message;
+
+          if (!message) {
+            throw new Error('No message in response');
+          }
+
+          if (message.tool_calls && message.tool_calls.length > 0) {
+            messages.push({
+              role: 'assistant',
+              content: message.content || null,
+              tool_calls: message.tool_calls,
+            });
+
+            for (const toolCall of message.tool_calls) {
+              const toolName = toolCall.function.name;
+              const toolArgs = JSON.parse(toolCall.function.arguments || '{}');
+              const tool = tools.find(t => t.name === toolName);
+              let toolResult: any;
+
+              if (tool && tool.execute) {
+                try {
+                  toolResult = await tool.execute(toolArgs.input || JSON.stringify(toolArgs));
+                  if (tool.returnDirect) {
+                    return { success: true, output: toolResult };
+                  }
+                } catch (error) {
+                  toolResult = { error: error instanceof Error ? error.message : 'ツール実行エラー' };
+                }
+              } else {
+                toolResult = { error: `ツール "${toolName}" が見つかりません` };
+              }
+
+              messages.push({
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                name: toolName,
+                content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult),
+              });
+            }
+          } else {
+            finalOutput = message.content || '';
+            context.logs.push(`[LLM] ${node.data.label}: OpenAI応答取得成功`);
+            return { success: true, output: finalOutput };
+          }
         }
 
-        const data = await response.json();
-        const output = data.choices?.[0]?.message?.content || '';
-
-        context.logs.push(`[LLM] ${node.data.label}: OpenAI応答取得成功`);
-        return { success: true, output };
+        return { success: true, output: finalOutput || '[最大イテレーション到達]' };
       } catch (error) {
         context.logs.push(`[LLM] ${node.data.label}: OpenAI呼び出し失敗 - モック応答を返します`);
       }
@@ -1012,6 +1168,478 @@ const forEachExecutor: NodeExecutor = {
   },
 };
 
+// ============================================
+// Document Loader ノードエグゼキューター
+// ============================================
+
+// PDF Loader ノード
+const pdfLoaderExecutor: NodeExecutor = {
+  async execute(node, inputs, context) {
+    const config = node.data.config || {};
+    const filePath = config.file || config.filePath || inputs.file || '';
+    const fileData = config.file_file || inputs.file_file; // アップロードされたファイルデータ
+
+    context.logs.push(`[PDFLoader] ${node.data.label}: PDF読み込み開始`);
+
+    if (!filePath && !fileData) {
+      context.logs.push(`[PDFLoader] ${node.data.label}: ファイルが指定されていません`);
+      return { success: false, output: null, error: 'PDFファイルが指定されていません' };
+    }
+
+    try {
+      // サーバーサイドでのPDF処理
+      if (typeof window === 'undefined' && filePath) {
+        const fs = await import('fs/promises');
+        const path = await import('path');
+
+        // ファイルパスを解決
+        const fullPath = path.isAbsolute(filePath)
+          ? filePath
+          : path.join(process.cwd(), 'data', 'uploads', filePath);
+
+        // ファイル存在チェック
+        try {
+          await fs.access(fullPath);
+        } catch {
+          context.logs.push(`[PDFLoader] ${node.data.label}: ファイルが見つかりません: ${fullPath}`);
+          return { success: false, output: null, error: `ファイルが見つかりません: ${filePath}` };
+        }
+
+        // PDFの内容を読み取る（実際のPDF解析は将来実装）
+        // 現在はファイル情報のみ返す
+        const stats = await fs.stat(fullPath);
+
+        context.logs.push(`[PDFLoader] ${node.data.label}: PDF読み込み成功 (${stats.size} bytes)`);
+
+        // モック: 実際のPDF解析は pdf-parse などのライブラリが必要
+        return {
+          success: true,
+          output: {
+            type: 'pdf',
+            filePath: filePath,
+            fileName: path.basename(filePath),
+            size: stats.size,
+            content: `[PDF Content from: ${path.basename(filePath)}]\n\nこのPDFファイルの内容がここに展開されます。\n実際のPDF解析には pdf-parse ライブラリが必要です。`,
+            pageCount: 1,
+            metadata: {
+              source: filePath,
+              type: 'application/pdf',
+            },
+          },
+        };
+      }
+
+      // ファイル名のみの場合（アップロード済み）
+      context.logs.push(`[PDFLoader] ${node.data.label}: ファイル名: ${filePath}`);
+      return {
+        success: true,
+        output: {
+          type: 'pdf',
+          filePath: filePath,
+          fileName: filePath,
+          content: `[PDF Content: ${filePath}]\n\nPDFファイルの内容がここに読み込まれます。`,
+          metadata: {
+            source: filePath,
+            type: 'application/pdf',
+          },
+        },
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'PDF読み込みエラー';
+      context.logs.push(`[PDFLoader] ${node.data.label}: エラー - ${errorMessage}`);
+      return { success: false, output: null, error: `PDF読み込みエラー: ${errorMessage}` };
+    }
+  },
+};
+
+// Text Loader ノード
+const textLoaderExecutor: NodeExecutor = {
+  async execute(node, inputs, context) {
+    const config = node.data.config || {};
+    const filePath = config.file || config.filePath || inputs.file || '';
+
+    context.logs.push(`[TextLoader] ${node.data.label}: テキスト読み込み開始`);
+
+    if (!filePath) {
+      context.logs.push(`[TextLoader] ${node.data.label}: ファイルが指定されていません`);
+      return { success: false, output: null, error: 'テキストファイルが指定されていません' };
+    }
+
+    try {
+      if (typeof window === 'undefined') {
+        const fs = await import('fs/promises');
+        const path = await import('path');
+
+        const fullPath = path.isAbsolute(filePath)
+          ? filePath
+          : path.join(process.cwd(), 'data', 'uploads', filePath);
+
+        try {
+          await fs.access(fullPath);
+        } catch {
+          context.logs.push(`[TextLoader] ${node.data.label}: ファイルが見つかりません: ${fullPath}`);
+          return { success: false, output: null, error: `ファイルが見つかりません: ${filePath}` };
+        }
+
+        const content = await fs.readFile(fullPath, 'utf-8');
+        const stats = await fs.stat(fullPath);
+
+        context.logs.push(`[TextLoader] ${node.data.label}: 読み込み成功 (${content.length} 文字)`);
+
+        return {
+          success: true,
+          output: {
+            type: 'text',
+            filePath: filePath,
+            fileName: path.basename(filePath),
+            size: stats.size,
+            content: content,
+            metadata: {
+              source: filePath,
+              type: 'text/plain',
+              encoding: 'utf-8',
+            },
+          },
+        };
+      }
+
+      return {
+        success: true,
+        output: {
+          type: 'text',
+          filePath: filePath,
+          fileName: filePath,
+          content: `[Text Content: ${filePath}]`,
+          metadata: { source: filePath },
+        },
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'テキスト読み込みエラー';
+      context.logs.push(`[TextLoader] ${node.data.label}: エラー - ${errorMessage}`);
+      return { success: false, output: null, error: `テキスト読み込みエラー: ${errorMessage}` };
+    }
+  },
+};
+
+// CSV Loader ノード
+const csvLoaderExecutor: NodeExecutor = {
+  async execute(node, inputs, context) {
+    const config = node.data.config || {};
+    const filePath = config.file || config.filePath || inputs.file || '';
+    const separator = config.separator || ',';
+
+    context.logs.push(`[CSVLoader] ${node.data.label}: CSV読み込み開始`);
+
+    if (!filePath) {
+      return { success: false, output: null, error: 'CSVファイルが指定されていません' };
+    }
+
+    try {
+      if (typeof window === 'undefined') {
+        const fs = await import('fs/promises');
+        const path = await import('path');
+
+        const fullPath = path.isAbsolute(filePath)
+          ? filePath
+          : path.join(process.cwd(), 'data', 'uploads', filePath);
+
+        try {
+          await fs.access(fullPath);
+        } catch {
+          return { success: false, output: null, error: `ファイルが見つかりません: ${filePath}` };
+        }
+
+        const content = await fs.readFile(fullPath, 'utf-8');
+        const lines = content.split('\n').filter(line => line.trim());
+
+        // CSVをパース
+        const headers = lines[0]?.split(separator).map(h => h.trim()) || [];
+        const rows = lines.slice(1).map(line => {
+          const values = line.split(separator).map(v => v.trim());
+          const row: Record<string, string> = {};
+          headers.forEach((header, index) => {
+            row[header] = values[index] || '';
+          });
+          return row;
+        });
+
+        context.logs.push(`[CSVLoader] ${node.data.label}: ${rows.length} 行読み込み成功`);
+
+        return {
+          success: true,
+          output: {
+            type: 'csv',
+            filePath: filePath,
+            fileName: path.basename(filePath),
+            content: content,
+            headers: headers,
+            rows: rows,
+            rowCount: rows.length,
+            metadata: {
+              source: filePath,
+              type: 'text/csv',
+              separator: separator,
+            },
+          },
+        };
+      }
+
+      return {
+        success: true,
+        output: {
+          type: 'csv',
+          filePath: filePath,
+          content: `[CSV Content: ${filePath}]`,
+          metadata: { source: filePath },
+        },
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'CSV読み込みエラー';
+      context.logs.push(`[CSVLoader] ${node.data.label}: エラー - ${errorMessage}`);
+      return { success: false, output: null, error: `CSV読み込みエラー: ${errorMessage}` };
+    }
+  },
+};
+
+// JSON Loader ノード
+const jsonLoaderExecutor: NodeExecutor = {
+  async execute(node, inputs, context) {
+    const config = node.data.config || {};
+    const filePath = config.file || config.filePath || inputs.file || '';
+
+    context.logs.push(`[JSONLoader] ${node.data.label}: JSON読み込み開始`);
+
+    if (!filePath) {
+      return { success: false, output: null, error: 'JSONファイルが指定されていません' };
+    }
+
+    try {
+      if (typeof window === 'undefined') {
+        const fs = await import('fs/promises');
+        const path = await import('path');
+
+        const fullPath = path.isAbsolute(filePath)
+          ? filePath
+          : path.join(process.cwd(), 'data', 'uploads', filePath);
+
+        try {
+          await fs.access(fullPath);
+        } catch {
+          return { success: false, output: null, error: `ファイルが見つかりません: ${filePath}` };
+        }
+
+        const content = await fs.readFile(fullPath, 'utf-8');
+        const jsonData = JSON.parse(content);
+
+        context.logs.push(`[JSONLoader] ${node.data.label}: JSON読み込み成功`);
+
+        return {
+          success: true,
+          output: {
+            type: 'json',
+            filePath: filePath,
+            fileName: path.basename(filePath),
+            content: content,
+            data: jsonData,
+            metadata: {
+              source: filePath,
+              type: 'application/json',
+            },
+          },
+        };
+      }
+
+      return {
+        success: true,
+        output: {
+          type: 'json',
+          filePath: filePath,
+          content: `[JSON Content: ${filePath}]`,
+          metadata: { source: filePath },
+        },
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'JSON読み込みエラー';
+      context.logs.push(`[JSONLoader] ${node.data.label}: エラー - ${errorMessage}`);
+      return { success: false, output: null, error: `JSON読み込みエラー: ${errorMessage}` };
+    }
+  },
+};
+
+// DOCX Loader ノード
+const docxLoaderExecutor: NodeExecutor = {
+  async execute(node, inputs, context) {
+    const config = node.data.config || {};
+    const filePath = config.file || config.filePath || inputs.file || '';
+
+    context.logs.push(`[DOCXLoader] ${node.data.label}: DOCX読み込み開始`);
+
+    if (!filePath) {
+      return { success: false, output: null, error: 'DOCXファイルが指定されていません' };
+    }
+
+    try {
+      if (typeof window === 'undefined') {
+        const fs = await import('fs/promises');
+        const path = await import('path');
+
+        const fullPath = path.isAbsolute(filePath)
+          ? filePath
+          : path.join(process.cwd(), 'data', 'uploads', filePath);
+
+        try {
+          await fs.access(fullPath);
+        } catch {
+          return { success: false, output: null, error: `ファイルが見つかりません: ${filePath}` };
+        }
+
+        const stats = await fs.stat(fullPath);
+
+        context.logs.push(`[DOCXLoader] ${node.data.label}: DOCX読み込み成功 (${stats.size} bytes)`);
+
+        // モック: 実際のDOCX解析は mammoth などのライブラリが必要
+        return {
+          success: true,
+          output: {
+            type: 'docx',
+            filePath: filePath,
+            fileName: path.basename(filePath),
+            size: stats.size,
+            content: `[DOCX Content from: ${path.basename(filePath)}]\n\nこのWord文書の内容がここに展開されます。\n実際のDOCX解析には mammoth ライブラリが必要です。`,
+            metadata: {
+              source: filePath,
+              type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            },
+          },
+        };
+      }
+
+      return {
+        success: true,
+        output: {
+          type: 'docx',
+          filePath: filePath,
+          content: `[DOCX Content: ${filePath}]`,
+          metadata: { source: filePath },
+        },
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'DOCX読み込みエラー';
+      context.logs.push(`[DOCXLoader] ${node.data.label}: エラー - ${errorMessage}`);
+      return { success: false, output: null, error: `DOCX読み込みエラー: ${errorMessage}` };
+    }
+  },
+};
+
+// Excel Loader ノード
+const excelLoaderExecutor: NodeExecutor = {
+  async execute(node, inputs, context) {
+    const config = node.data.config || {};
+    const filePath = config.file || config.filePath || inputs.file || '';
+
+    context.logs.push(`[ExcelLoader] ${node.data.label}: Excel読み込み開始`);
+
+    if (!filePath) {
+      return { success: false, output: null, error: 'Excelファイルが指定されていません' };
+    }
+
+    try {
+      if (typeof window === 'undefined') {
+        const fs = await import('fs/promises');
+        const path = await import('path');
+
+        const fullPath = path.isAbsolute(filePath)
+          ? filePath
+          : path.join(process.cwd(), 'data', 'uploads', filePath);
+
+        try {
+          await fs.access(fullPath);
+        } catch {
+          return { success: false, output: null, error: `ファイルが見つかりません: ${filePath}` };
+        }
+
+        const stats = await fs.stat(fullPath);
+
+        context.logs.push(`[ExcelLoader] ${node.data.label}: Excel読み込み成功 (${stats.size} bytes)`);
+
+        // モック: 実際のExcel解析は xlsx などのライブラリが必要
+        return {
+          success: true,
+          output: {
+            type: 'excel',
+            filePath: filePath,
+            fileName: path.basename(filePath),
+            size: stats.size,
+            content: `[Excel Content from: ${path.basename(filePath)}]\n\nこのExcelファイルの内容がここに展開されます。\n実際のExcel解析には xlsx ライブラリが必要です。`,
+            sheets: ['Sheet1'],
+            metadata: {
+              source: filePath,
+              type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            },
+          },
+        };
+      }
+
+      return {
+        success: true,
+        output: {
+          type: 'excel',
+          filePath: filePath,
+          content: `[Excel Content: ${filePath}]`,
+          metadata: { source: filePath },
+        },
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Excel読み込みエラー';
+      context.logs.push(`[ExcelLoader] ${node.data.label}: エラー - ${errorMessage}`);
+      return { success: false, output: null, error: `Excel読み込みエラー: ${errorMessage}` };
+    }
+  },
+};
+
+// 汎用 Document Loader ノード（ファイル拡張子で自動判別）
+const documentLoaderExecutor: NodeExecutor = {
+  async execute(node, inputs, context) {
+    const config = node.data.config || {};
+    const filePath = config.file || config.filePath || inputs.file || inputs.input || '';
+
+    context.logs.push(`[DocumentLoader] ${node.data.label}: ドキュメント読み込み開始`);
+
+    if (!filePath) {
+      context.logs.push(`[DocumentLoader] ${node.data.label}: ファイルが指定されていません`);
+      return { success: false, output: null, error: 'ファイルが指定されていません' };
+    }
+
+    // ファイル拡張子を取得
+    const ext = String(filePath).toLowerCase().split('.').pop() || '';
+    context.logs.push(`[DocumentLoader] ${node.data.label}: ファイル拡張子: .${ext}`);
+
+    // 拡張子に応じて適切なローダーに委譲
+    switch (ext) {
+      case 'pdf':
+        return pdfLoaderExecutor.execute(node, inputs, context);
+      case 'txt':
+      case 'md':
+      case 'markdown':
+        return textLoaderExecutor.execute(node, inputs, context);
+      case 'csv':
+        return csvLoaderExecutor.execute(node, inputs, context);
+      case 'json':
+        return jsonLoaderExecutor.execute(node, inputs, context);
+      case 'doc':
+      case 'docx':
+        return docxLoaderExecutor.execute(node, inputs, context);
+      case 'xls':
+      case 'xlsx':
+        return excelLoaderExecutor.execute(node, inputs, context);
+      default:
+        // 不明な拡張子はテキストとして読み込みを試行
+        context.logs.push(`[DocumentLoader] ${node.data.label}: 不明な拡張子、テキストとして読み込み試行`);
+        return textLoaderExecutor.execute(node, inputs, context);
+    }
+  },
+};
+
 // モック検索結果を生成するヘルパー関数
 function generateMockSearchResults(query: string, topK: number): Array<{ content: string; score: number; metadata?: Record<string, any> }> {
   const querySnippet = String(query).slice(0, 50);
@@ -1488,6 +2116,103 @@ const owlAgentExecutor: NodeExecutor = {
   },
 };
 
+// Agent As Tool ノード（OwlAgentをツールとして使用）
+const agentAsToolExecutor: NodeExecutor = {
+  async execute(node, inputs, context) {
+    const data = node.data;
+    const config = data.config || {};
+    const agentId = config.agentId || data.agentId;
+    const toolName = config.toolName || data.toolName || 'agent_tool';
+    const toolDescription = config.toolDescription || data.toolDescription || 'OwlAgentをツールとして実行します';
+    const returnDirect = config.returnDirect || data.returnDirect || false;
+
+    if (!agentId) {
+      context.logs.push(`[AgentAsTool] ${node.data.label}: エラー - agentIdが指定されていません`);
+      return {
+        success: false,
+        output: null,
+        error: 'AgentAsToolノードにagentIdが設定されていません',
+      };
+    }
+
+    // OwlAgentを読み込んでツール定義を作成
+    const owlAgent = await loadOwlAgent(agentId);
+    if (!owlAgent) {
+      context.logs.push(`[AgentAsTool] ${node.data.label}: エラー - エージェント "${agentId}" が見つかりません`);
+      return {
+        success: false,
+        output: null,
+        error: `OwlAgent "${agentId}" が見つかりません`,
+      };
+    }
+
+    context.logs.push(`[AgentAsTool] ${node.data.label}: OwlAgent "${owlAgent.name}" をツールとして登録`);
+
+    // ツール定義を作成
+    const toolDefinition = {
+      type: 'agentAsTool',
+      name: toolName,
+      description: toolDescription,
+      agentId: agentId,
+      agentName: owlAgent.name,
+      returnDirect: returnDirect,
+      // ツールとして呼び出された時の実行関数
+      execute: async (toolInput: string) => {
+        context.logs.push(`[AgentAsTool] ツール "${toolName}" を実行 (エージェント: ${owlAgent.name})`);
+
+        // サブフローを実行
+        const subFlow = owlAgent.flow;
+        if (!subFlow || !subFlow.nodes || subFlow.nodes.length === 0) {
+          return { result: `エージェント "${owlAgent.name}" にはフローが定義されていません`, input: toolInput };
+        }
+
+        const subResult = await executeFlow(
+          subFlow.nodes,
+          subFlow.edges,
+          toolInput,
+          context.sessionId
+        );
+
+        // 実行ログをマージ
+        subResult.logs.forEach((log: string) => {
+          context.logs.push(`  [Tool:${toolName}] ${log}`);
+        });
+
+        if (!subResult.success) {
+          return { error: subResult.error || 'エージェント実行に失敗しました' };
+        }
+
+        return subResult.output;
+      },
+      // OpenAI Function Calling用のスキーマ
+      schema: {
+        type: 'function',
+        function: {
+          name: toolName,
+          description: toolDescription,
+          parameters: {
+            type: 'object',
+            properties: {
+              input: {
+                type: 'string',
+                description: 'ツールへの入力'
+              }
+            },
+            required: ['input']
+          }
+        }
+      }
+    };
+
+    context.logs.push(`[AgentAsTool] ${node.data.label}: ツール定義作成完了`);
+
+    return {
+      success: true,
+      output: toolDefinition,
+    };
+  },
+};
+
 // Conversational Agent ノード（会話型エージェント）
 const conversationalAgentExecutor: NodeExecutor = {
   async execute(node, inputs, context) {
@@ -1660,6 +2385,26 @@ const executorMap: Record<string, NodeExecutor> = {
   writeFile: writeFileExecutor,
   WriteFile: writeFileExecutor,
 
+  // Document Loaders
+  documentLoader: documentLoaderExecutor,
+  DocumentLoader: documentLoaderExecutor,
+  pdfLoader: pdfLoaderExecutor,
+  PdfLoader: pdfLoaderExecutor,
+  PDFLoader: pdfLoaderExecutor,
+  textLoader: textLoaderExecutor,
+  TextLoader: textLoaderExecutor,
+  csvLoader: csvLoaderExecutor,
+  CsvLoader: csvLoaderExecutor,
+  CSVLoader: csvLoaderExecutor,
+  jsonLoader: jsonLoaderExecutor,
+  JsonLoader: jsonLoaderExecutor,
+  JSONLoader: jsonLoaderExecutor,
+  docxLoader: docxLoaderExecutor,
+  DocxLoader: docxLoaderExecutor,
+  DOCXLoader: docxLoaderExecutor,
+  excelLoader: excelLoaderExecutor,
+  ExcelLoader: excelLoaderExecutor,
+
   // Agent系ノード
   agent: agentExecutor,
   Agent: agentExecutor,
@@ -1680,6 +2425,13 @@ const executorMap: Record<string, NodeExecutor> = {
   owlAgent: owlAgentExecutor,
   OwlAgent: owlAgentExecutor,
   owlagent: owlAgentExecutor,
+  owlAgentReference: owlAgentExecutor,
+  OwlAgentReference: owlAgentExecutor,
+
+  // Agent As Tool ノード（OwlAgentをツールとして使用）
+  agentAsTool: agentAsToolExecutor,
+  AgentAsTool: agentAsToolExecutor,
+  agentastool: agentAsToolExecutor,
 
   // Conversational Agent ノード
   conversationalAgent: conversationalAgentExecutor,

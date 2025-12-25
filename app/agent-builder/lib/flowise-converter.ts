@@ -55,6 +55,9 @@ const NODE_TYPE_MAPPING: Record<string, string> = {
 
   // OwlAgent Reference
   owlAgentReference: 'chatflowTool',
+
+  // Agent As Tool
+  agentAsTool: 'chatflowTool',
 };
 
 // ============================================
@@ -169,6 +172,7 @@ function getBaseClasses(nodeType: string): string[] {
     calculator: ['Calculator', 'Tool'],
     customTool: ['CustomTool', 'Tool'],
     retrieverTool: ['RetrieverTool', 'Tool'],
+    agentAsTool: ['ChatflowTool', 'Tool'],
   };
 
   return baseClassesMap[nodeType] || ['Unknown'];
