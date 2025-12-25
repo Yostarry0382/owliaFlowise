@@ -1,0 +1,205 @@
+{
+  "id": "java-code-generator-from-pdf",
+  "name": "PDFガイド準拠Javaコードジェネレーター",
+  "description": "PDFドキュメント（コーディング規約、設計ガイド等）を読み込み、ユーザーのプロンプトに基づいてガイドラインに準拠したJavaコードを生成し、ファイルとして出力します。",
+  "iconStyle": "orange",
+  "version": "1.0.0",
+  "flow": {
+    "nodes": [
+      {
+        "id": "start-input",
+        "type": "start",
+        "position": { "x": 0, "y": 200 },
+        "data": {
+          "label": "ユーザー入力",
+          "type": "start",
+          "category": "flowControl",
+          "config": {
+            "inputLabel": "コード生成リクエスト",
+            "inputPlaceholder": "生成したいJavaコードの内容を入力してください（例：ユーザー認証クラス、REST APIコントローラー等）",
+            "inputType": "textarea"
+          }
+        }
+      },
+      {
+        "id": "pdf-loader",
+        "type": "pdfLoader",
+        "position": { "x": 250, "y": 50 },
+        "data": {
+          "label": "PDFガイド読込",
+          "type": "pdfLoader",
+          "category": "documentLoaders",
+          "config": {
+            "splitPages": true,
+            "description": "コーディング規約・設計ガイドPDFを読み込む"
+          }
+        }
+      },
+      {
+        "id": "llm-analyze-guide",
+        "type": "azureChatOpenAI",
+        "position": { "x": 500, "y": 50 },
+        "data": {
+          "label": "ガイドライン解析",
+          "type": "azureChatOpenAI",
+          "category": "chatModels",
+          "config": {
+            "systemMessage": "あなたはJavaコーディング規約の専門家です。提供されたPDFドキュメントの内容を解析し、以下の情報を抽出・整理してください：\n\n1. **命名規則**: クラス名、メソッド名、変数名、定数名の規則\n2. **コーディングスタイル**: インデント、括弧の位置、行の長さ制限\n3. **パッケージ構造**: 推奨されるパッケージ構成\n4. **クラス設計**: 継承、インターフェース使用のガイドライン\n5. **例外処理**: try-catch、カスタム例外の規約\n6. **コメント・Javadoc**: ドキュメント記述ルール\n7. **テスト**: ユニットテストの書き方\n8. **禁止事項**: 使ってはいけないパターン、アンチパターン\n\nこれらを構造化された形式で出力してください。",
+            "temperature": 0.1,
+            "maxTokens": 4000
+          }
+        }
+      },
+      {
+        "id": "llm-generate-code",
+        "type": "azureChatOpenAI",
+        "position": { "x": 500, "y": 250 },
+        "data": {
+          "label": "Javaコード生成",
+          "type": "azureChatOpenAI",
+          "category": "chatModels",
+          "config": {
+            "systemMessage": "あなたは熟練のJavaエンジニアです。以下の情報に基づいてJavaコードを生成してください：\n\n**入力情報:**\n- ガイドライン解析結果（コーディング規約）\n- ユーザーのコード生成リクエスト\n\n**出力要件:**\n1. ガイドラインに100%準拠したJavaコードを生成\n2. 適切なJavadocコメントを含める\n3. 必要なimport文を含める\n4. パッケージ宣言を含める（デフォルト: com.example.generated）\n5. 堅牢なエラーハンドリングを実装\n6. 単一責任の原則を遵守\n7. テスト容易性を考慮した設計\n\n**出力形式:**\nJavaコードのみを出力してください。説明やマークダウンの装飾は不要です。\n\n```java\n// ここにコード\n```",
+            "temperature": 0.3,
+            "maxTokens": 8000
+          }
+        }
+      },
+      {
+        "id": "llm-validate-code",
+        "type": "azureChatOpenAI",
+        "position": { "x": 750, "y": 250 },
+        "data": {
+          "label": "コード検証",
+          "type": "azureChatOpenAI",
+          "category": "chatModels",
+          "config": {
+            "systemMessage": "あなたはJavaコードレビュアーです。生成されたJavaコードを検証し、必要に応じて修正してください。\n\n**検証項目:**\n1. 構文エラーがないか\n2. ガイドラインに準拠しているか\n3. import文が正しく含まれているか\n4. Javadocが適切に記述されているか\n5. 例外処理が適切か\n6. 命名規則に従っているか\n\n**出力形式:**\n検証済みの完全なJavaコードのみを出力してください。\n問題があった場合は修正した上で出力してください。\nマークダウンのコードブロック記法は使わず、純粋なJavaコードのみを出力してください。",
+            "temperature": 0.1,
+            "maxTokens": 8000
+          }
+        }
+      },
+      {
+        "id": "human-review",
+        "type": "humanReview",
+        "position": { "x": 1000, "y": 250 },
+        "data": {
+          "label": "コード確認",
+          "type": "humanReview",
+          "category": "flowControl",
+          "config": {
+            "enabled": true,
+            "message": "生成されたJavaコードを確認してください。必要に応じて編集できます。",
+            "allowEdit": true,
+            "timeoutSeconds": 0
+          },
+          "humanReview": {
+            "enabled": true,
+            "requiresApproval": true,
+            "approvalMessage": "生成されたJavaコードを確認し、問題なければ承認してください。",
+            "allowEdit": true
+          }
+        }
+      },
+      {
+        "id": "write-file",
+        "type": "writeFile",
+        "position": { "x": 1250, "y": 250 },
+        "data": {
+          "label": "Javaファイル出力",
+          "type": "writeFile",
+          "category": "tools",
+          "config": {
+            "basePath": "./generated/java",
+            "description": "生成されたJavaコードをファイルとして保存"
+          }
+        }
+      },
+      {
+        "id": "end-output",
+        "type": "end",
+        "position": { "x": 1500, "y": 250 },
+        "data": {
+          "label": "完了",
+          "type": "end",
+          "category": "flowControl",
+          "config": {
+            "outputFormat": "text",
+            "successMessage": "Javaコードの生成とファイル出力が完了しました"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-start-pdf",
+        "source": "start-input",
+        "target": "pdf-loader",
+        "sourceHandle": "output",
+        "targetHandle": "input",
+        "label": "PDFパス"
+      },
+      {
+        "id": "edge-pdf-analyze",
+        "source": "pdf-loader",
+        "target": "llm-analyze-guide",
+        "sourceHandle": "output",
+        "targetHandle": "input",
+        "label": "PDFコンテンツ"
+      },
+      {
+        "id": "edge-start-generate",
+        "source": "start-input",
+        "target": "llm-generate-code",
+        "sourceHandle": "output",
+        "targetHandle": "userRequest",
+        "label": "ユーザーリクエスト"
+      },
+      {
+        "id": "edge-analyze-generate",
+        "source": "llm-analyze-guide",
+        "target": "llm-generate-code",
+        "sourceHandle": "output",
+        "targetHandle": "guidelines",
+        "label": "ガイドライン"
+      },
+      {
+        "id": "edge-generate-validate",
+        "source": "llm-generate-code",
+        "target": "llm-validate-code",
+        "sourceHandle": "output",
+        "targetHandle": "input",
+        "label": "生成コード"
+      },
+      {
+        "id": "edge-validate-review",
+        "source": "llm-validate-code",
+        "target": "human-review",
+        "sourceHandle": "output",
+        "targetHandle": "input",
+        "label": "検証済みコード"
+      },
+      {
+        "id": "edge-review-write",
+        "source": "human-review",
+        "target": "write-file",
+        "sourceHandle": "output",
+        "targetHandle": "input",
+        "label": "承認済みコード"
+      },
+      {
+        "id": "edge-write-end",
+        "source": "write-file",
+        "target": "end-output",
+        "sourceHandle": "output",
+        "targetHandle": "input",
+        "label": "保存結果"
+      }
+    ],
+    "viewport": { "x": 50, "y": 100, "zoom": 0.7 }
+  },
+  "tags": ["Java", "コード生成", "PDF", "コーディング規約", "自動生成", "開発支援"],
+  "createdAt": "2025-12-25T00:00:00.000Z",
+  "updatedAt": "2025-12-25T00:00:00.000Z"
+}

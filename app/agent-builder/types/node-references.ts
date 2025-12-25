@@ -237,96 +237,30 @@ export const nodeReferences: Record<string, NodeReference> = {
   },
 
   // ============================================
-  // Chains
-  // ============================================
-  llmChain: {
-    description:
-      '言語モデルに対してクエリを実行するチェーンです。プロンプトテンプレートとLLMを組み合わせて使用します。',
-    features: [
-      'プロンプトテンプレートとの統合',
-      '変数の動的置換',
-      'シンプルなLLM呼び出し',
-    ],
-    useCases: [
-      'テキスト生成',
-      'テンプレートベースの応答',
-      '単純なQ&A',
-    ],
-    docUrl: 'https://docs.flowiseai.com/integrations/langchain/chains',
-  },
-
-  conversationChain: {
-    description:
-      'メモリが統合されたチャットモデルチェーンです。会話の履歴を保持しながら対話を続けることができます。',
-    features: [
-      'メモリの自動統合',
-      '会話履歴の管理',
-      'コンテキスト維持',
-    ],
-    useCases: [
-      '継続的な対話',
-      'カスタマーサービスボット',
-      '教育用チャットボット',
-    ],
-    docUrl: 'https://docs.flowiseai.com/integrations/langchain/chains',
-  },
-
-  retrievalQAChain: {
-    description:
-      '取得したドキュメントから質問に答えるチェーンです。ベクトルストアと連携してRAGパイプラインを構築します。',
-    features: [
-      'ドキュメント検索と回答生成',
-      'ソースドキュメントの返却',
-      'ベクトルストアとの統合',
-    ],
-    useCases: [
-      'ドキュメントQ&A',
-      'ナレッジベース検索',
-      'FAQシステム',
-    ],
-    tips: [
-      'returnSourceDocumentsを有効にして参照元を表示',
-      'チャンクサイズを調整して回答精度を向上',
-    ],
-    docUrl: 'https://docs.flowiseai.com/integrations/langchain/chains',
-  },
-
-  conversationalRetrievalQAChain: {
-    description:
-      '会話形式でドキュメントベースの質問応答を行うチェーンです。検索機能と会話メモリを組み合わせます。',
-    features: [
-      '会話履歴を考慮した検索',
-      'フォローアップ質問のサポート',
-      'コンテキスト維持型RAG',
-    ],
-    useCases: [
-      '対話型ドキュメント検索',
-      '継続的なQ&Aセッション',
-    ],
-    docUrl: 'https://docs.flowiseai.com/integrations/langchain/chains',
-  },
-
-  // ============================================
   // Tools
   // ============================================
-  serper: {
+  tool: {
     description:
-      'Google検索APIを使用してリアルタイムの検索結果を取得するツールです。',
+      '汎用ツールノード。API呼び出し、カスタムJavaScript関数、データベースクエリの3つのモードで動作します。',
     features: [
-      'Google検索結果の取得',
-      'リアルタイム情報アクセス',
-      'スニペットとリンクの抽出',
+      'HTTP API呼び出し（GET/POST/PUT/DELETE）',
+      'カスタムHTTPヘッダーのサポート',
+      'カスタムJavaScript関数の実行',
+      'SQLクエリの実行（SELECT文のみ）',
+      'セキュリティ保護付き実行環境',
     ],
     useCases: [
-      '最新情報の検索',
-      'ファクトチェック',
-      '調査・リサーチ',
+      '外部APIとの連携',
+      'データ変換・加工処理',
+      'カスタムビジネスロジック',
+      'データベースからの情報取得',
     ],
     tips: [
-      'Serper APIキーが必要です',
-      '検索クエリは具体的にすると精度向上',
+      'API Callモード: エンドポイントURLとHTTPメソッドを指定',
+      'Custom Functionモード: input変数で入力値を参照可能',
+      'Database Queryモード: SELECT文のみ実行可能（現在はモック）',
+      'セキュリティ上、危険なコードやSQLコマンドはブロックされます',
     ],
-    docUrl: 'https://docs.flowiseai.com/integrations/langchain/tools',
   },
 
   calculator: {
@@ -361,22 +295,6 @@ export const nodeReferences: Record<string, NodeReference> = {
     tips: [
       'ツールの説明を明確にしてエージェントの理解を助ける',
       'エラーハンドリングを適切に実装',
-    ],
-    docUrl: 'https://docs.flowiseai.com/integrations/langchain/tools',
-  },
-
-  webBrowser: {
-    description:
-      'Webサイトをナビゲートして情報を抽出するツールです。Webスクレイピングやページ内容の取得に使用されます。',
-    features: [
-      'Webページのナビゲーション',
-      'コンテンツ抽出',
-      'リンクの追跡',
-    ],
-    useCases: [
-      'Webリサーチ',
-      'コンテンツ収集',
-      '情報抽出',
     ],
     docUrl: 'https://docs.flowiseai.com/integrations/langchain/tools',
   },

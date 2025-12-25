@@ -460,21 +460,10 @@ export const FLOWISE_NODE_TYPES = {
   conversationalAgent: { name: 'Conversational Agent', category: FLOWISE_NODE_CATEGORIES.AGENTS },
   toolAgent: { name: 'Tool Agent', category: FLOWISE_NODE_CATEGORIES.AGENTS },
 
-  // Chains
-  llmChain: { name: 'LLM Chain', category: FLOWISE_NODE_CATEGORIES.CHAINS },
-  conversationChain: { name: 'Conversation Chain', category: FLOWISE_NODE_CATEGORIES.CHAINS },
-  retrievalQAChain: { name: 'Retrieval QA Chain', category: FLOWISE_NODE_CATEGORIES.CHAINS },
-  conversationalRetrievalQAChain: { name: 'Conversational Retrieval QA Chain', category: FLOWISE_NODE_CATEGORIES.CHAINS },
-  sqlDatabaseChain: { name: 'SQL Database Chain', category: FLOWISE_NODE_CATEGORIES.CHAINS },
-
   // Tools
   calculator: { name: 'Calculator', category: FLOWISE_NODE_CATEGORIES.TOOLS },
-  webBrowser: { name: 'Web Browser', category: FLOWISE_NODE_CATEGORIES.TOOLS },
   customTool: { name: 'Custom Tool', category: FLOWISE_NODE_CATEGORIES.TOOLS },
-  chainTool: { name: 'Chain Tool', category: FLOWISE_NODE_CATEGORIES.TOOLS },
   chatflowTool: { name: 'Chatflow Tool', category: FLOWISE_NODE_CATEGORIES.TOOLS },
-  serpAPI: { name: 'SerpAPI', category: FLOWISE_NODE_CATEGORIES.TOOLS },
-  braveSearchAPI: { name: 'BraveSearch API', category: FLOWISE_NODE_CATEGORIES.TOOLS },
 
   // Retrievers
   vectorStoreRetriever: { name: 'Vector Store Retriever', category: FLOWISE_NODE_CATEGORIES.RETRIEVERS },
