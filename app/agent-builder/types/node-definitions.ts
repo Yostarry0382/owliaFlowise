@@ -234,6 +234,7 @@ export const CHAT_MODEL_NODES: NodeTypeDefinition[] = [
     inputHandles: [
       { id: 'input', label: 'Input', type: 'any', position: 'left' },
       { id: 'tools', label: 'Tools', type: 'tool', position: 'top', multiple: true },
+      { id: 'document', label: 'Document', type: 'document', position: 'top', multiple: true },
     ],
     outputHandles: [
       { id: 'output', label: 'Output', type: 'any', position: 'right' },
