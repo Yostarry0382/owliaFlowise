@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
       reviewNodeId,
       reviewDecision,
       previousOutputs,
+      previousNodeExecutionLogs,
     } = body;
 
     // Human Review後の継続処理
@@ -42,7 +43,8 @@ export async function POST(request: NextRequest) {
         reviewNodeId,
         editedOutput,
         previousOutputs || {},
-        sessionId
+        sessionId,
+        previousNodeExecutionLogs || []
       );
 
       console.log('[API] Continue result:', JSON.stringify(result, null, 2));

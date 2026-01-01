@@ -94,7 +94,7 @@ export default function SavedOwlsList() {
 
   // OwliaFabricaの編集画面に遷移
   const handleEditInOwliaFabrica = (agentId: string) => {
-    router.push(`/agent-canvas/${agentId}`);
+    router.push(`/agent-builder?id=${agentId}`);
   };
 
   // Fetch saved owls from API
@@ -133,23 +133,31 @@ export default function SavedOwlsList() {
   }, []);
 
   const handleDelete = async (owlId: string) => {
-    if (!confirm('このOwlAgentを削除しますか？')) {
+    if (!confirm('このOwlAgentを削除しますか？この操作は元に戻せません。')) {
       return;
     }
 
     try {
-      const response = await fetch(`/api/owlagents?id=${owlId}`, {
+      const response = await fetch(`/api/owlagents/${owlId}`, {
         method: 'DELETE',
       });
 
       if (response.ok) {
-        await fetchSavedOwls();
+        // 削除成功後、リストを更新
+        const remainingOwls = savedOwls.filter(owl => owl.id !== owlId);
+        setSavedOwls(remainingOwls);
+
+        // 削除したのが選択中のOwlAgentの場合、次のOwlAgentを選択
         if (selectedOwl?.id === owlId) {
-          setSelectedOwl(savedOwls[0] || null);
+          setSelectedOwl(remainingOwls.length > 0 ? remainingOwls[0] : null);
         }
+      } else {
+        const errorData = await response.json();
+        alert(`削除に失敗しました: ${errorData.error || '不明なエラー'}`);
       }
     } catch (error) {
       console.error('Failed to delete owl:', error);
+      alert('削除中にエラーが発生しました');
     }
   };
 

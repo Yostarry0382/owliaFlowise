@@ -7,7 +7,6 @@
 export type NodeCategory =
   | 'flowControl'
   | 'chatModels'
-  | 'embeddings'
   | 'vectorStores'
   | 'documentLoaders'
   | 'memory'
@@ -65,7 +64,6 @@ export interface CategoryDefinition {
 export const NODE_CATEGORIES: CategoryDefinition[] = [
   { id: 'flowControl', label: 'Flow Control', icon: '🎯', color: '#8BC34A' },
   { id: 'chatModels', label: 'Chat Models', icon: '💬', color: '#4CAF50' },
-  { id: 'embeddings', label: 'Embeddings', icon: '🔤', color: '#2196F3' },
   { id: 'vectorStores', label: 'Vector Stores', icon: '📚', color: '#9C27B0' },
   { id: 'documentLoaders', label: 'Document Loaders', icon: '📄', color: '#FF9800' },
   { id: 'memory', label: 'Memory', icon: '🧠', color: '#E91E63' },
@@ -239,39 +237,6 @@ export const CHAT_MODEL_NODES: NodeTypeDefinition[] = [
     outputHandles: [
       { id: 'output', label: 'Output', type: 'any', position: 'right' },
       { id: 'chatModel', label: 'Chat Model', type: 'chatModel', position: 'bottom' },
-    ],
-  },
-];
-
-// ============================================
-// Embeddings
-// ============================================
-export const EMBEDDING_NODES: NodeTypeDefinition[] = [
-  {
-    type: 'azureOpenAIEmbeddings',
-    label: 'Azure OpenAI Embeddings',
-    category: 'embeddings',
-    icon: '🔤',
-    description: 'Azure OpenAIの埋め込みモデルを使用してテキストをベクトルに変換。ベクトル検索やセマンティック検索に使用。',
-    color: '#2196F3',
-    inputs: [
-      { name: 'deploymentName', label: 'Deployment Name', type: 'string', required: true, placeholder: 'text-embedding-ada-002', description: 'Azure OpenAIでデプロイした埋め込みモデルの名前' },
-      { name: 'modelName', label: 'Model Name', type: 'select', required: true, default: 'text-embedding-ada-002', description: '使用する埋め込みモデル。text-embedding-3-largeが最高精度', options: [
-        { label: 'text-embedding-ada-002', value: 'text-embedding-ada-002' },
-        { label: 'text-embedding-3-small', value: 'text-embedding-3-small' },
-        { label: 'text-embedding-3-large', value: 'text-embedding-3-large' },
-      ]},
-      { name: 'apiVersion', label: 'API Version', type: 'string', default: '2024-02-15-preview', description: 'Azure OpenAI APIのバージョン（※APIキーとエンドポイントは環境変数から自動取得）' },
-      { name: 'batchSize', label: 'Batch Size', type: 'number', default: 512, min: 1, max: 2048, description: '一度に処理するテキストの数' },
-      { name: 'stripNewLines', label: 'Strip New Lines', type: 'boolean', default: true, description: 'テキストから改行を削除するか' },
-      { name: 'dimensions', label: 'Dimensions', type: 'number', min: 1, max: 3072, description: 'text-embedding-3モデル用の埋め込み次元数（オプション）' },
-    ],
-    inputHandles: [
-      { id: 'input', label: 'Text Input', type: 'any', position: 'left' },
-    ],
-    outputHandles: [
-      { id: 'output', label: 'Vectors', type: 'any', position: 'right' },
-      { id: 'embeddings', label: 'Embeddings', type: 'embeddings', position: 'bottom' },
     ],
   },
 ];
@@ -750,7 +715,6 @@ export const OWL_AGENT_NODE: NodeTypeDefinition = {
 export const ALL_NODE_DEFINITIONS: NodeTypeDefinition[] = [
   ...FLOW_CONTROL_NODES,
   ...CHAT_MODEL_NODES,
-  ...EMBEDDING_NODES,
   ...VECTOR_STORE_NODES,
   ...DOCUMENT_LOADER_NODES,
   ...MEMORY_NODES,

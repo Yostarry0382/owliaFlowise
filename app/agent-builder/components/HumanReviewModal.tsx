@@ -274,11 +274,7 @@ export default function HumanReviewModal({
               '& .MuiAlert-icon': { color: '#90CAF9' },
             }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography sx={{ fontSize: '0.9rem' }}>
-                Auto-approve in {timeRemaining} seconds
-              </Typography>
-            </Box>
+            Auto-approve in {timeRemaining} seconds
           </Alert>
           <LinearProgress
             variant="determinate"

@@ -20,6 +20,8 @@ export interface ExecutionContext {
   };
   // ノード実行ログ
   nodeExecutionLogs: NodeExecutionLog[];
+  // OwlAgent循環参照検出用のスタック
+  owlAgentStack?: Set<string>;
 }
 
 // ノード実行結果
@@ -78,7 +80,23 @@ function topologicalSort(nodes: FlowNode[], edges: FlowEdge[]): FlowNode[] {
   return sorted;
 }
 
-// ノードへの入力を収集
+/**
+ * ノードへの入力を収集
+ *
+ * 複数入力の処理方法:
+ * 1. 単一接続: そのまま値を渡す
+ * 2. 複数接続（同じハンドル）: 配列として渡す
+ * 3. 複数接続（異なるハンドル）: 各ハンドル名をキーとしたオブジェクトで渡す
+ * 4. toolsハンドル: 特別扱い（ソースノード情報を含む配列）
+ *
+ * ノードのconfig.inputMergeMode で複数入力のマージ方法を指定可能:
+ * - 'array': 配列として渡す（デフォルト）
+ * - 'concat': 文字列として連結
+ * - 'first': 最初の入力のみ使用
+ * - 'last': 最後の入力のみ使用
+ * - 'merge': オブジェクトをマージ
+ * - 'sum': 数値を合計
+ */
 function collectNodeInputs(
   node: FlowNode,
   edges: FlowEdge[],
@@ -86,24 +104,34 @@ function collectNodeInputs(
   allNodes: FlowNode[]
 ): Record<string, any> {
   const inputs: Record<string, any> = {};
-  // 同じハンドルへの複数接続を追跡
-  const handleConnections: Record<string, { output: any; sourceNode: FlowNode }[]> = {};
+  const config = node.data.config || {};
+  const inputMergeMode = config.inputMergeMode || 'array';
 
-  edges
-    .filter(e => e.target === node.id)
-    .forEach(e => {
-      const sourceOutput = nodeOutputs.get(e.source);
-      const sourceNode = allNodes.find(n => n.id === e.source);
-      const handleId = e.targetHandle || 'input';
+  // 同じハンドルへの複数接続を追跡（順序を保持）
+  const handleConnections: Record<string, { output: any; sourceNode: FlowNode; order: number }[]> = {};
 
-      if (!handleConnections[handleId]) {
-        handleConnections[handleId] = [];
-      }
-      handleConnections[handleId].push({ output: sourceOutput, sourceNode: sourceNode! });
+  // エッジを順序付きで処理
+  const incomingEdges = edges.filter(e => e.target === node.id);
+  incomingEdges.forEach((e, index) => {
+    const sourceOutput = nodeOutputs.get(e.source);
+    const sourceNode = allNodes.find(n => n.id === e.source);
+    const handleId = e.targetHandle || 'input';
+
+    if (!handleConnections[handleId]) {
+      handleConnections[handleId] = [];
+    }
+    handleConnections[handleId].push({
+      output: sourceOutput,
+      sourceNode: sourceNode!,
+      order: index
     });
+  });
 
   // 各ハンドルの接続を処理
   Object.entries(handleConnections).forEach(([handleId, connections]) => {
+    // 順序でソート
+    connections.sort((a, b) => a.order - b.order);
+
     if (handleId === 'tools' && connections.length > 0) {
       // toolsハンドルの場合は配列として、ソースノード情報も含める
       inputs[handleId] = connections.map(c => ({
@@ -114,12 +142,164 @@ function collectNodeInputs(
       // 単一接続の場合は値のみ
       inputs[handleId] = connections[0].output;
     } else {
-      // 複数接続の場合は配列
-      inputs[handleId] = connections.map(c => c.output);
+      // 複数接続の場合: マージモードに応じて処理
+      const values = connections.map(c => c.output);
+
+      switch (inputMergeMode) {
+        case 'concat':
+          // 文字列として連結（区切り文字はconfigで指定可能）
+          const separator = config.inputSeparator || '\n';
+          inputs[handleId] = values.map(v => String(v ?? '')).join(separator);
+          break;
+
+        case 'first':
+          // 最初の入力のみ使用
+          inputs[handleId] = values[0];
+          break;
+
+        case 'last':
+          // 最後の入力のみ使用
+          inputs[handleId] = values[values.length - 1];
+          break;
+
+        case 'merge':
+          // オブジェクトをマージ（浅いマージ）
+          inputs[handleId] = values.reduce((merged, val) => {
+            if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+              return { ...merged, ...val };
+            }
+            return merged;
+          }, {});
+          break;
+
+        case 'sum':
+          // 数値を合計
+          inputs[handleId] = values.reduce((sum, val) => {
+            const num = Number(val);
+            return sum + (isNaN(num) ? 0 : num);
+          }, 0);
+          break;
+
+        case 'array':
+        default:
+          // 配列として渡す（デフォルト）
+          inputs[handleId] = values;
+          break;
+      }
     }
   });
 
+  // 複数入力のメタ情報を追加
+  inputs._multiInputInfo = {
+    handleCount: Object.keys(handleConnections).length,
+    totalConnections: incomingEdges.length,
+    handles: Object.fromEntries(
+      Object.entries(handleConnections).map(([handle, conns]) => [
+        handle,
+        { count: conns.length, sources: conns.map(c => c.sourceNode?.data.label || 'unknown') }
+      ])
+    ),
+    mergeMode: inputMergeMode,
+  };
+
   return inputs;
+}
+
+// forEachノードのループボディ（後続ノード）を特定する
+function getLoopBodyNodes(
+  forEachNode: FlowNode,
+  allNodes: FlowNode[],
+  edges: FlowEdge[]
+): { bodyNodes: FlowNode[]; exitNodeId: string | null } {
+  // forEachノードから直接接続されているノードを取得
+  const directTargets = edges
+    .filter(e => e.source === forEachNode.id)
+    .map(e => e.target);
+
+  if (directTargets.length === 0) {
+    return { bodyNodes: [], exitNodeId: null };
+  }
+
+  // ループボディのノードを収集（forEachから到達可能なノード）
+  const bodyNodeIds = new Set<string>();
+  const exitNodeId: string | null = null;
+
+  // BFSでループボディのノードを収集
+  const queue = [...directTargets];
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    if (bodyNodeIds.has(nodeId)) continue;
+
+    const node = allNodes.find(n => n.id === nodeId);
+    if (!node) continue;
+
+    // ループ終了ノード（loopEnd タイプ）の場合はループボディに含めない
+    if (node.data.type === 'loopEnd' || node.data.type === 'forEachEnd') {
+      continue;
+    }
+
+    bodyNodeIds.add(nodeId);
+
+    // このノードからの後続ノードをキューに追加
+    const nextTargets = edges
+      .filter(e => e.source === nodeId)
+      .map(e => e.target);
+    queue.push(...nextTargets);
+  }
+
+  // bodyNodeIdsに含まれるノードを取得
+  const bodyNodes = allNodes.filter(n => bodyNodeIds.has(n.id));
+
+  return { bodyNodes, exitNodeId };
+}
+
+// ループボディのノードをトポロジカルソートして実行順序を決定
+function sortLoopBodyNodes(bodyNodes: FlowNode[], edges: FlowEdge[]): FlowNode[] {
+  // bodyNodesのIDセットを作成
+  const bodyNodeIds = new Set(bodyNodes.map(n => n.id));
+
+  // bodyNodes間のエッジのみを使用
+  const bodyEdges = edges.filter(e =>
+    bodyNodeIds.has(e.source) && bodyNodeIds.has(e.target)
+  );
+
+  // トポロジカルソート
+  const nodeMap = new Map(bodyNodes.map(n => [n.id, n]));
+  const inDegree = new Map<string, number>();
+  const adjacency = new Map<string, string[]>();
+
+  bodyNodes.forEach(n => {
+    inDegree.set(n.id, 0);
+    adjacency.set(n.id, []);
+  });
+
+  bodyEdges.forEach(e => {
+    const targets = adjacency.get(e.source) || [];
+    targets.push(e.target);
+    adjacency.set(e.source, targets);
+    inDegree.set(e.target, (inDegree.get(e.target) || 0) + 1);
+  });
+
+  const queue: string[] = [];
+  inDegree.forEach((degree, nodeId) => {
+    if (degree === 0) queue.push(nodeId);
+  });
+
+  const sorted: FlowNode[] = [];
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    const node = nodeMap.get(nodeId);
+    if (node) sorted.push(node);
+
+    const neighbors = adjacency.get(nodeId) || [];
+    neighbors.forEach(neighbor => {
+      const newDegree = (inDegree.get(neighbor) || 1) - 1;
+      inDegree.set(neighbor, newDegree);
+      if (newDegree === 0) queue.push(neighbor);
+    });
+  }
+
+  return sorted;
 }
 
 // ============================================
@@ -179,11 +359,21 @@ const llmExecutor: NodeExecutor = {
     const systemMessage = config.systemMessage || '';
     const temperature = config.temperature || 0.7;
     const maxIterations = config.maxIterations || 5; // ツール呼び出しの最大回数
-    const enableTools = config.enableTools || false; // ツール機能の有効/無効
     const builtinToolIds: string[] = config.builtinTools || []; // 選択された組み込みツールのID配列
     const toolAgentIds: string[] = config.toolAgents || []; // 選択されたOwlAgentのID配列
     const toolChoice = config.toolChoice || 'auto'; // ツール利用の判断方法: auto, required
     const toolSettings: Record<string, Record<string, any>> = config.toolSettings || {}; // ツールごとの詳細設定
+
+    // ツール機能の有効/無効を判定
+    // 1. 明示的に設定されている場合はその値を使用
+    // 2. toolsハンドルに接続されたノードがある場合は自動的に有効化
+    // 3. 組み込みツールまたはOwlAgentツールが選択されている場合も自動的に有効化
+    const hasToolConnections = inputs.tools && Array.isArray(inputs.tools) && inputs.tools.length > 0;
+    const hasBuiltinTools = builtinToolIds.length > 0;
+    const hasAgentTools = toolAgentIds.length > 0;
+    const enableTools = config.enableTools !== undefined
+      ? config.enableTools
+      : (hasToolConnections || hasBuiltinTools || hasAgentTools);
 
     // ドキュメント入力の処理
     const documentInputs = inputs.document || [];
@@ -213,6 +403,16 @@ const llmExecutor: NodeExecutor = {
     // ツール配列
     const tools: any[] = [];
 
+    // ツールの有効化状態をログ出力
+    if (enableTools) {
+      const reasons: string[] = [];
+      if (config.enableTools === true) reasons.push('明示的に有効化');
+      if (hasToolConnections) reasons.push(`ノード接続ツール${inputs.tools.length}個`);
+      if (hasBuiltinTools) reasons.push(`組み込みツール${builtinToolIds.length}個`);
+      if (hasAgentTools) reasons.push(`OwlAgentツール${toolAgentIds.length}個`);
+      context.logs.push(`[LLM] ${node.data.label}: ツール機能有効 (${reasons.join(', ')})`);
+    }
+
     // 組み込みツールをロード
     if (enableTools && builtinToolIds.length > 0) {
       context.logs.push(`[LLM] 組み込みツール: ${builtinToolIds.length}個をロード中...`);
@@ -238,16 +438,45 @@ const llmExecutor: NodeExecutor = {
             },
           },
           execute: async (args: { filePath: string; content: string }) => {
-            const fs = await import('fs').then(m => m.promises);
-            const path = await import('path');
-            const basePath = getToolSetting('writeFile', 'basePath', './data/output');
-            const fullPath = path.join(basePath, args.filePath);
+            try {
+              const fs = await import('fs').then(m => m.promises);
+              const path = await import('path');
+              const basePath = getToolSetting('writeFile', 'basePath', './data/output');
+              const fileFormat = getToolSetting('writeFile', 'fileFormat', 'txt');
+              const writeMode = getToolSetting('writeFile', 'writeMode', 'overwrite');
 
-            // ディレクトリを作成
-            await fs.mkdir(path.dirname(fullPath), { recursive: true });
-            await fs.writeFile(fullPath, args.content, 'utf-8');
-            context.logs.push(`[Tool] ファイル書き込み完了: ${fullPath}`);
-            return `ファイルを書き込みました: ${fullPath}`;
+              // 相対パスを絶対パスに変換
+              const resolvedBasePath = path.isAbsolute(basePath) ? basePath : path.resolve(process.cwd(), basePath);
+
+              // ファイルパスに拡張子がない場合、設定された形式を追加
+              let finalFilePath = args.filePath;
+              const hasExtension = /\.[a-zA-Z0-9]+$/.test(args.filePath);
+              if (!hasExtension) {
+                finalFilePath = `${args.filePath}.${fileFormat}`;
+              }
+
+              const fullPath = path.join(resolvedBasePath, finalFilePath);
+
+              context.logs.push(`[Tool] ファイル書き込み開始: ${fullPath} (モード: ${writeMode === 'append' ? '追記' : '上書き'})`);
+
+              // ディレクトリを作成
+              await fs.mkdir(path.dirname(fullPath), { recursive: true });
+
+              // 書き込みモードに応じて処理
+              if (writeMode === 'append') {
+                await fs.appendFile(fullPath, args.content, 'utf-8');
+                context.logs.push(`[Tool] ファイル追記完了: ${fullPath}`);
+                return `ファイルに追記しました: ${fullPath}`;
+              } else {
+                await fs.writeFile(fullPath, args.content, 'utf-8');
+                context.logs.push(`[Tool] ファイル書き込み完了: ${fullPath}`);
+                return `ファイルを書き込みました: ${fullPath}`;
+              }
+            } catch (error) {
+              const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+              context.logs.push(`[Tool] ファイル書き込みエラー: ${errorMsg}`);
+              return `ファイル書き込みエラー: ${errorMsg}`;
+            }
           },
         },
         readFile: {
@@ -268,17 +497,23 @@ const llmExecutor: NodeExecutor = {
             },
           },
           execute: async (args: { filePath: string }) => {
-            const fs = await import('fs').then(m => m.promises);
-            const path = await import('path');
-            const basePath = getToolSetting('readFile', 'basePath', './data');
-            const fullPath = path.join(basePath, args.filePath);
-
             try {
+              const fs = await import('fs').then(m => m.promises);
+              const path = await import('path');
+              const basePath = getToolSetting('readFile', 'basePath', './data');
+              // 相対パスを絶対パスに変換
+              const resolvedBasePath = path.isAbsolute(basePath) ? basePath : path.resolve(process.cwd(), basePath);
+              const fullPath = path.join(resolvedBasePath, args.filePath);
+
+              context.logs.push(`[Tool] ファイル読み込み開始: ${fullPath}`);
+
               const content = await fs.readFile(fullPath, 'utf-8');
-              context.logs.push(`[Tool] ファイル読み込み完了: ${fullPath}`);
+              context.logs.push(`[Tool] ファイル読み込み完了: ${fullPath} (${content.length}文字)`);
               return content;
             } catch (error) {
-              return `ファイルが見つかりません: ${fullPath}`;
+              const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+              context.logs.push(`[Tool] ファイル読み込みエラー: ${errorMsg}`);
+              return `ファイル読み込みエラー: ${errorMsg}`;
             }
           },
         },
@@ -422,12 +657,12 @@ const llmExecutor: NodeExecutor = {
         },
         pdfLoader: {
           name: 'pdf_loader',
-          description: 'PDFファイルを読み込みます',
+          description: 'PDFファイルを読み込み、テキストを抽出します',
           schema: {
             type: 'function',
             function: {
               name: 'pdf_loader',
-              description: 'PDFファイルを読み込みます',
+              description: 'PDFファイルを読み込み、テキストを抽出します',
               parameters: {
                 type: 'object',
                 properties: {
@@ -441,15 +676,27 @@ const llmExecutor: NodeExecutor = {
             const fs = await import('fs').then(m => m.promises);
             const path = await import('path');
             const basePath = getToolSetting('pdfLoader', 'basePath', './data');
-            const fullPath = path.join(basePath, args.filePath);
+            // 相対パスを絶対パスに変換
+            const resolvedBasePath = path.isAbsolute(basePath) ? basePath : path.resolve(process.cwd(), basePath);
+            const fullPath = path.join(resolvedBasePath, args.filePath);
             try {
-              // PDFの解析にはpdf-parseライブラリが必要
-              // ここでは簡易版としてファイル存在確認のみ
-              await fs.access(fullPath);
-              context.logs.push(`[Tool] PDF読み込み: ${fullPath}`);
-              return `PDFファイルを検出: ${fullPath} (完全な解析にはpdf-parseライブラリが必要です)`;
+              context.logs.push(`[Tool] PDF読み込み開始: ${fullPath}`);
+              type PdfParseResult = { text: string; numpages: number; info: unknown };
+              type PdfParseFunc = (buffer: Buffer) => Promise<PdfParseResult>;
+              const pdfParseModule = await import('pdf-parse');
+              const pdfParse: PdfParseFunc = (pdfParseModule as { default?: PdfParseFunc }).default || (pdfParseModule as unknown as PdfParseFunc);
+              const dataBuffer = await fs.readFile(fullPath);
+              const pdfData = await pdfParse(dataBuffer);
+              context.logs.push(`[Tool] PDF読み込み完了: ${fullPath} (${pdfData.numpages}ページ, ${pdfData.text.length}文字)`);
+              return JSON.stringify({
+                text: pdfData.text.slice(0, 10000), // 最大10000文字
+                numPages: pdfData.numpages,
+                info: pdfData.info,
+              });
             } catch (error) {
-              return `PDFファイルが見つかりません: ${fullPath}`;
+              const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+              context.logs.push(`[Tool] PDFエラー: ${errorMsg}`);
+              return `PDFファイル読み込みエラー: ${errorMsg}`;
             }
           },
         },
@@ -475,8 +722,11 @@ const llmExecutor: NodeExecutor = {
             const path = await import('path');
             const basePath = getToolSetting('csvLoader', 'basePath', './data');
             const delimiter = getToolSetting('csvLoader', 'delimiter', ',');
-            const fullPath = path.join(basePath, args.filePath);
+            // 相対パスを絶対パスに変換
+            const resolvedBasePath = path.isAbsolute(basePath) ? basePath : path.resolve(process.cwd(), basePath);
+            const fullPath = path.join(resolvedBasePath, args.filePath);
             try {
+              context.logs.push(`[Tool] CSV読み込み開始: ${fullPath}`);
               const content = await fs.readFile(fullPath, 'utf-8');
               const lines = content.split('\n');
               const headers = lines[0]?.split(delimiter) || [];
@@ -484,7 +734,9 @@ const llmExecutor: NodeExecutor = {
               context.logs.push(`[Tool] CSV読み込み完了: ${fullPath} (${rows.length}行, 区切り: "${delimiter}")`);
               return JSON.stringify({ headers, rowCount: rows.length, preview: lines.slice(0, 5).join('\n') });
             } catch (error) {
-              return `CSVファイルが見つかりません: ${fullPath}`;
+              const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+              context.logs.push(`[Tool] CSVエラー: ${errorMsg}`);
+              return `CSVファイル読み込みエラー: ${errorMsg}`;
             }
           },
         },
@@ -509,14 +761,19 @@ const llmExecutor: NodeExecutor = {
             const fs = await import('fs').then(m => m.promises);
             const path = await import('path');
             const basePath = getToolSetting('jsonLoader', 'basePath', './data');
-            const fullPath = path.join(basePath, args.filePath);
+            // 相対パスを絶対パスに変換
+            const resolvedBasePath = path.isAbsolute(basePath) ? basePath : path.resolve(process.cwd(), basePath);
+            const fullPath = path.join(resolvedBasePath, args.filePath);
             try {
+              context.logs.push(`[Tool] JSON読み込み開始: ${fullPath}`);
               const content = await fs.readFile(fullPath, 'utf-8');
               const parsed = JSON.parse(content);
               context.logs.push(`[Tool] JSON読み込み完了: ${fullPath}`);
               return JSON.stringify(parsed, null, 2).slice(0, 5000);
             } catch (error) {
-              return `JSONファイル読み込みエラー: ${error instanceof Error ? error.message : 'Unknown'}`;
+              const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+              context.logs.push(`[Tool] JSONエラー: ${errorMsg}`);
+              return `JSONファイル読み込みエラー: ${errorMsg}`;
             }
           },
         },
@@ -542,24 +799,29 @@ const llmExecutor: NodeExecutor = {
             const path = await import('path');
             const basePath = getToolSetting('textLoader', 'basePath', './data');
             const maxLength = getToolSetting('textLoader', 'maxLength', 10000);
-            const fullPath = path.join(basePath, args.filePath);
+            // 相対パスを絶対パスに変換
+            const resolvedBasePath = path.isAbsolute(basePath) ? basePath : path.resolve(process.cwd(), basePath);
+            const fullPath = path.join(resolvedBasePath, args.filePath);
             try {
+              context.logs.push(`[Tool] テキスト読み込み開始: ${fullPath}`);
               const content = await fs.readFile(fullPath, 'utf-8');
-              context.logs.push(`[Tool] テキスト読み込み完了: ${fullPath}`);
+              context.logs.push(`[Tool] テキスト読み込み完了: ${fullPath} (${content.length}文字)`);
               return content.slice(0, maxLength);
             } catch (error) {
-              return `テキストファイルが見つかりません: ${fullPath}`;
+              const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+              context.logs.push(`[Tool] テキストエラー: ${errorMsg}`);
+              return `テキストファイル読み込みエラー: ${errorMsg}`;
             }
           },
         },
         docxLoader: {
           name: 'docx_loader',
-          description: 'Wordファイル（.docx）を読み込みます',
+          description: 'Wordファイル（.docx）を読み込み、テキストを抽出します',
           schema: {
             type: 'function',
             function: {
               name: 'docx_loader',
-              description: 'Wordファイルを読み込みます',
+              description: 'Wordファイルを読み込み、テキストを抽出します',
               parameters: {
                 type: 'object',
                 properties: {
@@ -573,24 +835,36 @@ const llmExecutor: NodeExecutor = {
             const fs = await import('fs').then(m => m.promises);
             const path = await import('path');
             const basePath = getToolSetting('docxLoader', 'basePath', './data');
-            const fullPath = path.join(basePath, args.filePath);
+            // 相対パスを絶対パスに変換
+            const resolvedBasePath = path.isAbsolute(basePath) ? basePath : path.resolve(process.cwd(), basePath);
+            const fullPath = path.join(resolvedBasePath, args.filePath);
             try {
-              await fs.access(fullPath);
-              context.logs.push(`[Tool] DOCX検出: ${fullPath}`);
-              return `DOCXファイルを検出: ${fullPath} (完全な解析にはmammothライブラリが必要です)`;
+              context.logs.push(`[Tool] DOCX読み込み開始: ${fullPath}`);
+              const mammoth = await import('mammoth');
+              const dataBuffer = await fs.readFile(fullPath);
+              const result = await mammoth.extractRawText({ buffer: dataBuffer });
+              const text = result.value;
+              context.logs.push(`[Tool] DOCX読み込み完了: ${fullPath} (${text.length}文字)`);
+              return JSON.stringify({
+                text: text.slice(0, 10000), // 最大10000文字
+                charCount: text.length,
+                messages: result.messages,
+              });
             } catch (error) {
-              return `DOCXファイルが見つかりません: ${fullPath}`;
+              const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+              context.logs.push(`[Tool] DOCXエラー: ${errorMsg}`);
+              return `DOCXファイル読み込みエラー: ${errorMsg}`;
             }
           },
         },
         excelLoader: {
           name: 'excel_loader',
-          description: 'Excelファイル（.xlsx）を読み込みます',
+          description: 'Excelファイル（.xlsx）を読み込み、データを抽出します',
           schema: {
             type: 'function',
             function: {
               name: 'excel_loader',
-              description: 'Excelファイルを読み込みます',
+              description: 'Excelファイルを読み込み、データを抽出します',
               parameters: {
                 type: 'object',
                 properties: {
@@ -607,14 +881,40 @@ const llmExecutor: NodeExecutor = {
             const basePath = getToolSetting('excelLoader', 'basePath', './data');
             const defaultSheet = getToolSetting('excelLoader', 'sheetName', '');
             const sheetName = args.sheetName || defaultSheet;
-            const fullPath = path.join(basePath, args.filePath);
+            // 相対パスを絶対パスに変換
+            const resolvedBasePath = path.isAbsolute(basePath) ? basePath : path.resolve(process.cwd(), basePath);
+            const fullPath = path.join(resolvedBasePath, args.filePath);
             try {
-              await fs.access(fullPath);
-              const sheetInfo = sheetName ? `, シート: ${sheetName}` : '';
-              context.logs.push(`[Tool] Excel検出: ${fullPath}${sheetInfo}`);
-              return `Excelファイルを検出: ${fullPath}${sheetInfo} (完全な解析にはxlsxライブラリが必要です)`;
+              context.logs.push(`[Tool] Excel読み込み開始: ${fullPath}`);
+              const XLSX = await import('xlsx');
+              const dataBuffer = await fs.readFile(fullPath);
+              const workbook = XLSX.read(dataBuffer, { type: 'buffer' });
+
+              // シート名を決定（指定がなければ最初のシート）
+              const targetSheet = sheetName || workbook.SheetNames[0];
+              const worksheet = workbook.Sheets[targetSheet];
+
+              if (!worksheet) {
+                return `シートが見つかりません: ${targetSheet} (利用可能: ${workbook.SheetNames.join(', ')})`;
+              }
+
+              // JSONに変換
+              const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+              const headers = (jsonData[0] as any[]) || [];
+              const rows = jsonData.slice(1);
+
+              context.logs.push(`[Tool] Excel読み込み完了: ${fullPath} (シート: ${targetSheet}, ${rows.length}行)`);
+              return JSON.stringify({
+                sheetName: targetSheet,
+                allSheets: workbook.SheetNames,
+                headers,
+                rowCount: rows.length,
+                preview: jsonData.slice(0, 10), // 最初の10行をプレビュー
+              });
             } catch (error) {
-              return `Excelファイルが見つかりません: ${fullPath}`;
+              const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+              context.logs.push(`[Tool] Excelエラー: ${errorMsg}`);
+              return `Excelファイル読み込みエラー: ${errorMsg}`;
             }
           },
         },
@@ -850,11 +1150,29 @@ const llmExecutor: NodeExecutor = {
                 const fs = await import('fs').then(m => m.promises);
                 const path = await import('path');
                 const basePath = nodeConfig.basePath || './data/output';
-                const fullPath = path.join(basePath, args.filePath);
+                const fileFormat = nodeConfig.fileFormat || 'txt';
+                const writeMode = nodeConfig.writeMode || 'overwrite';
+
+                // ファイルパスに拡張子がない場合、設定された形式を追加
+                let finalFilePath = args.filePath;
+                const hasExtension = /\.[a-zA-Z0-9]+$/.test(args.filePath);
+                if (!hasExtension) {
+                  finalFilePath = `${args.filePath}.${fileFormat}`;
+                }
+
+                const fullPath = path.join(basePath, finalFilePath);
                 await fs.mkdir(path.dirname(fullPath), { recursive: true });
-                await fs.writeFile(fullPath, args.content, 'utf-8');
-                context.logs.push(`[Tool] ファイル書き込み完了: ${fullPath}`);
-                return `ファイルを書き込みました: ${fullPath}`;
+
+                // 書き込みモードに応じて処理
+                if (writeMode === 'append') {
+                  await fs.appendFile(fullPath, args.content, 'utf-8');
+                  context.logs.push(`[Tool] ファイル追記完了: ${fullPath}`);
+                  return `ファイルに追記しました: ${fullPath}`;
+                } else {
+                  await fs.writeFile(fullPath, args.content, 'utf-8');
+                  context.logs.push(`[Tool] ファイル書き込み完了: ${fullPath}`);
+                  return `ファイルを書き込みました: ${fullPath}`;
+                }
               },
             };
             break;
@@ -1227,33 +1545,108 @@ const vectorStoreExecutor: NodeExecutor = {
   },
 };
 
-// Memory ノード
+// Memory ノード（永続化対応）
 const memoryExecutor: NodeExecutor = {
   async execute(node, inputs, context) {
     const config = node.data.config || {};
     const sessionId = config.sessionId || context.sessionId;
     const memoryKey = `memory_${sessionId}`;
+    const persistMemory = config.persistMemory !== false; // デフォルトで永続化
+    const memoryType = config.memoryType || 'buffer'; // buffer, window, summary
+    const windowSize = config.windowSize || 10;
 
-    // メモリから履歴を取得
-    const history = context.memory.get(memoryKey) || [];
+    // メモリ保存用のディレクトリパス
+    const fs = await import('fs').then(m => m.promises);
+    const path = await import('path');
+    const memoryDir = path.resolve(process.cwd(), 'data', 'memory');
+    const memoryFilePath = path.join(memoryDir, `${sessionId}.json`);
+
+    // メモリから履歴を取得（コンテキストまたはファイルから）
+    let history: Array<{ role: string; content: string; timestamp: string }> = context.memory.get(memoryKey) || [];
+
+    // 永続化が有効な場合、ファイルから読み込み
+    if (persistMemory && history.length === 0) {
+      try {
+        const fileContent = await fs.readFile(memoryFilePath, 'utf-8');
+        const savedData = JSON.parse(fileContent);
+        history = savedData.history || [];
+        context.logs.push(`[Memory] ${node.data.label}: ファイルから${history.length}件の履歴を読み込み`);
+      } catch {
+        // ファイルが存在しない場合は空の履歴
+        history = [];
+      }
+    }
 
     // 新しい入力を追加
     if (inputs.input) {
-      history.push({ role: 'user', content: inputs.input, timestamp: new Date().toISOString() });
+      history.push({
+        role: 'user',
+        content: String(inputs.input),
+        timestamp: new Date().toISOString()
+      });
 
-      // ウィンドウサイズで制限
-      const windowSize = config.windowSize || 10;
-      while (history.length > windowSize * 2) {
-        history.shift();
+      // AI応答も記録（入力にaiResponseがある場合）
+      if (inputs.aiResponse) {
+        history.push({
+          role: 'assistant',
+          content: String(inputs.aiResponse),
+          timestamp: new Date().toISOString()
+        });
       }
-
-      context.memory.set(memoryKey, history);
     }
 
-    context.logs.push(`[Memory] ${node.data.label}: 履歴 ${history.length} 件`);
+    // メモリタイプに応じた処理
+    switch (memoryType) {
+      case 'window':
+        // ウィンドウサイズで制限（最新のN会話を保持）
+        while (history.length > windowSize * 2) {
+          history.shift();
+        }
+        break;
+      case 'summary':
+        // TODO: 要約機能（LLMを使用して古い会話を要約）
+        // 現時点ではwindowと同じ動作
+        while (history.length > windowSize * 2) {
+          history.shift();
+        }
+        break;
+      case 'buffer':
+      default:
+        // バッファ: 全履歴を保持（最大制限あり）
+        const maxHistory = config.maxHistory || 100;
+        while (history.length > maxHistory) {
+          history.shift();
+        }
+        break;
+    }
+
+    // コンテキストに保存
+    context.memory.set(memoryKey, history);
+
+    // 永続化が有効な場合、ファイルに保存
+    if (persistMemory && inputs.input) {
+      try {
+        await fs.mkdir(memoryDir, { recursive: true });
+        await fs.writeFile(memoryFilePath, JSON.stringify({
+          sessionId,
+          history,
+          updatedAt: new Date().toISOString()
+        }, null, 2), 'utf-8');
+        context.logs.push(`[Memory] ${node.data.label}: 履歴をファイルに保存`);
+      } catch (error) {
+        context.logs.push(`[Memory] ${node.data.label}: ファイル保存エラー - ${error instanceof Error ? error.message : 'Unknown'}`);
+      }
+    }
+
+    context.logs.push(`[Memory] ${node.data.label}: 履歴 ${history.length} 件 (タイプ: ${memoryType})`);
     return {
       success: true,
-      output: { history, input: inputs.input },
+      output: {
+        history,
+        input: inputs.input,
+        historyText: history.map(h => `${h.role}: ${h.content}`).join('\n'),
+        messageCount: history.length
+      },
     };
   },
 };
@@ -1288,35 +1681,232 @@ const humanReviewExecutor: NodeExecutor = {
   },
 };
 
-// Condition ノード
+// Condition ノード（拡張条件サポート）
 const conditionExecutor: NodeExecutor = {
   async execute(node, inputs, context) {
     const config = node.data.config || {};
     const input = inputs.input;
     const condition = config.condition || 'true';
+    const conditionType = config.conditionType || 'expression'; // expression, comparison, regex, custom
 
     let result = false;
+    let evaluationLog = '';
+
     try {
-      // 安全な条件評価（単純な比較のみ）
-      if (condition.includes('==')) {
-        const [left, right] = condition.split('==').map((s: string) => s.trim());
-        result = String(input) === right.replace(/['"]/g, '');
-      } else if (condition.includes('includes')) {
-        const match = condition.match(/includes\(['"](.+)['"]\)/);
-        if (match) {
-          result = String(input).includes(match[1]);
-        }
-      } else {
-        result = Boolean(input);
+      // 入力値を適切な型に変換
+      const getValue = (value: any): any => {
+        if (value === undefined || value === null) return value;
+        if (typeof value === 'object') return value;
+        const str = String(value).trim();
+        // 数値変換
+        if (!isNaN(Number(str)) && str !== '') return Number(str);
+        // 真偽値変換
+        if (str.toLowerCase() === 'true') return true;
+        if (str.toLowerCase() === 'false') return false;
+        return str;
+      };
+
+      const inputValue = getValue(input);
+
+      switch (conditionType) {
+        case 'comparison':
+          // 比較演算子を使用した条件（左辺、演算子、右辺を設定）
+          const leftField = config.leftField || 'input';
+          const operator = config.operator || '==';
+          const rightValue = config.rightValue;
+          const rightParsed = getValue(rightValue);
+
+          // 左辺の値を取得（inputまたはinputのプロパティ）
+          let leftValue = inputValue;
+          if (leftField !== 'input' && typeof inputValue === 'object') {
+            leftValue = inputValue[leftField];
+          }
+
+          switch (operator) {
+            case '==':
+            case '===':
+              result = leftValue == rightParsed;
+              break;
+            case '!=':
+            case '!==':
+              result = leftValue != rightParsed;
+              break;
+            case '>':
+              result = Number(leftValue) > Number(rightParsed);
+              break;
+            case '>=':
+              result = Number(leftValue) >= Number(rightParsed);
+              break;
+            case '<':
+              result = Number(leftValue) < Number(rightParsed);
+              break;
+            case '<=':
+              result = Number(leftValue) <= Number(rightParsed);
+              break;
+            case 'contains':
+              result = String(leftValue).includes(String(rightParsed));
+              break;
+            case 'startsWith':
+              result = String(leftValue).startsWith(String(rightParsed));
+              break;
+            case 'endsWith':
+              result = String(leftValue).endsWith(String(rightParsed));
+              break;
+            case 'isEmpty':
+              result = !leftValue || (typeof leftValue === 'string' && leftValue.trim() === '');
+              break;
+            case 'isNotEmpty':
+              result = !!leftValue && (typeof leftValue !== 'string' || leftValue.trim() !== '');
+              break;
+            case 'isNull':
+              result = leftValue === null || leftValue === undefined;
+              break;
+            case 'isNotNull':
+              result = leftValue !== null && leftValue !== undefined;
+              break;
+            case 'isNumber':
+              result = !isNaN(Number(leftValue));
+              break;
+            case 'isArray':
+              result = Array.isArray(leftValue);
+              break;
+            default:
+              result = !!leftValue;
+          }
+          evaluationLog = `${leftField}(${JSON.stringify(leftValue)}) ${operator} ${JSON.stringify(rightParsed)} = ${result}`;
+          break;
+
+        case 'regex':
+          // 正規表現マッチ
+          const pattern = config.pattern || '';
+          const flags = config.regexFlags || 'i';
+          try {
+            const regex = new RegExp(pattern, flags);
+            result = regex.test(String(inputValue));
+            evaluationLog = `/${pattern}/${flags}.test("${String(inputValue).slice(0, 50)}...") = ${result}`;
+          } catch (e) {
+            result = false;
+            evaluationLog = `正規表現エラー: ${e instanceof Error ? e.message : 'Unknown'}`;
+          }
+          break;
+
+        case 'expression':
+        default:
+          // 従来の式ベースの条件（互換性維持 + 拡張）
+          const expr = condition.trim();
+
+          // true/false リテラル
+          if (expr === 'true') {
+            result = true;
+          } else if (expr === 'false') {
+            result = false;
+          }
+          // 等価比較 (== または ===)
+          else if (expr.includes('===')) {
+            const [left, right] = expr.split('===').map((s: string) => s.trim());
+            const rightVal = right.replace(/['"]/g, '');
+            result = String(inputValue) === rightVal;
+            evaluationLog = `"${inputValue}" === "${rightVal}"`;
+          } else if (expr.includes('==')) {
+            const [left, right] = expr.split('==').map((s: string) => s.trim());
+            const rightVal = right.replace(/['"]/g, '');
+            result = String(inputValue) == rightVal;
+            evaluationLog = `"${inputValue}" == "${rightVal}"`;
+          }
+          // 不等価比較
+          else if (expr.includes('!==')) {
+            const [left, right] = expr.split('!==').map((s: string) => s.trim());
+            const rightVal = right.replace(/['"]/g, '');
+            result = String(inputValue) !== rightVal;
+            evaluationLog = `"${inputValue}" !== "${rightVal}"`;
+          } else if (expr.includes('!=')) {
+            const [left, right] = expr.split('!=').map((s: string) => s.trim());
+            const rightVal = right.replace(/['"]/g, '');
+            result = String(inputValue) != rightVal;
+            evaluationLog = `"${inputValue}" != "${rightVal}"`;
+          }
+          // 大小比較
+          else if (expr.includes('>=')) {
+            const [left, right] = expr.split('>=').map((s: string) => s.trim());
+            result = Number(inputValue) >= Number(right.replace(/['"]/g, ''));
+            evaluationLog = `${inputValue} >= ${right}`;
+          } else if (expr.includes('<=')) {
+            const [left, right] = expr.split('<=').map((s: string) => s.trim());
+            result = Number(inputValue) <= Number(right.replace(/['"]/g, ''));
+            evaluationLog = `${inputValue} <= ${right}`;
+          } else if (expr.includes('>')) {
+            const [left, right] = expr.split('>').map((s: string) => s.trim());
+            result = Number(inputValue) > Number(right.replace(/['"]/g, ''));
+            evaluationLog = `${inputValue} > ${right}`;
+          } else if (expr.includes('<')) {
+            const [left, right] = expr.split('<').map((s: string) => s.trim());
+            result = Number(inputValue) < Number(right.replace(/['"]/g, ''));
+            evaluationLog = `${inputValue} < ${right}`;
+          }
+          // includes メソッド
+          else if (expr.includes('includes(')) {
+            const match = expr.match(/includes\(['"](.+)['"]\)/);
+            if (match) {
+              result = String(inputValue).includes(match[1]);
+              evaluationLog = `"${String(inputValue).slice(0, 30)}...".includes("${match[1]}")`;
+            }
+          }
+          // startsWith / endsWith
+          else if (expr.includes('startsWith(')) {
+            const match = expr.match(/startsWith\(['"](.+)['"]\)/);
+            if (match) {
+              result = String(inputValue).startsWith(match[1]);
+              evaluationLog = `startsWith("${match[1]}")`;
+            }
+          } else if (expr.includes('endsWith(')) {
+            const match = expr.match(/endsWith\(['"](.+)['"]\)/);
+            if (match) {
+              result = String(inputValue).endsWith(match[1]);
+              evaluationLog = `endsWith("${match[1]}")`;
+            }
+          }
+          // length チェック
+          else if (expr.includes('length')) {
+            const match = expr.match(/length\s*(>|>=|<|<=|==|===)\s*(\d+)/);
+            if (match) {
+              const len = typeof inputValue === 'string' ? inputValue.length :
+                          Array.isArray(inputValue) ? inputValue.length : 0;
+              const op = match[1];
+              const num = Number(match[2]);
+              switch (op) {
+                case '>': result = len > num; break;
+                case '>=': result = len >= num; break;
+                case '<': result = len < num; break;
+                case '<=': result = len <= num; break;
+                case '==': case '===': result = len === num; break;
+              }
+              evaluationLog = `length(${len}) ${op} ${num}`;
+            }
+          }
+          // デフォルト: truthy チェック
+          else {
+            result = Boolean(inputValue);
+            evaluationLog = `Boolean(${JSON.stringify(inputValue)})`;
+          }
+          break;
       }
-    } catch {
+    } catch (error) {
       result = Boolean(input);
+      evaluationLog = `エラー: ${error instanceof Error ? error.message : 'Unknown'}`;
     }
 
-    context.logs.push(`[Condition] ${node.data.label}: ${result ? 'true' : 'false'}`);
+    context.logs.push(`[Condition] ${node.data.label}: ${result ? 'true' : 'false'} (${evaluationLog || condition})`);
     return {
       success: true,
-      output: { result, value: input },
+      output: {
+        result,
+        value: input,
+        condition,
+        conditionType,
+        // 条件分岐用の出力ハンドル
+        true: result ? input : undefined,
+        false: !result ? input : undefined,
+      },
     };
   },
 };
@@ -1845,13 +2435,21 @@ const writeFileExecutor: NodeExecutor = {
   async execute(node, inputs, context) {
     const config = node.data.config || {};
     const basePath = config.basePath || './data/output';
-    const filePath = config.filePath || inputs.filePath || '';
+    const fileFormat = config.fileFormat || 'txt';
+    const writeMode = config.writeMode || 'overwrite';
+    let filePath = config.filePath || inputs.filePath || '';
     const content = inputs.input || inputs.content || '';
-    const overwrite = config.overwrite !== false; // デフォルトは上書き許可
+    const overwrite = writeMode !== 'append' && config.overwrite !== false;
 
     if (!filePath) {
       context.logs.push(`[WriteFile] ${node.data.label}: ファイルパスが指定されていません`);
       return { success: false, output: null, error: 'ファイルパスが指定されていません' };
+    }
+
+    // ファイルパスに拡張子がない場合、設定された形式を追加
+    const hasExtension = /\.[a-zA-Z0-9]+$/.test(filePath);
+    if (!hasExtension) {
+      filePath = `${filePath}.${fileFormat}`;
     }
 
     if (!content && content !== '') {
@@ -1859,7 +2457,8 @@ const writeFileExecutor: NodeExecutor = {
       return { success: false, output: null, error: '書き込む内容がありません' };
     }
 
-    context.logs.push(`[WriteFile] ${node.data.label}: ${filePath} に書き込み中`);
+    const modeLabel = writeMode === 'append' ? '追記' : '上書き';
+    context.logs.push(`[WriteFile] ${node.data.label}: ${filePath} に${modeLabel}中`);
 
     // セキュリティチェック: パストラバーサル攻撃を防止
     const normalizedPath = String(filePath).replace(/\\/g, '/');
@@ -1904,26 +2503,41 @@ const writeFileExecutor: NodeExecutor = {
           fileExists = false;
         }
 
-        if (fileExists && !overwrite) {
+        if (fileExists && !overwrite && writeMode !== 'append') {
           return { success: false, output: null, error: 'ファイルが既に存在します（上書き不可設定）' };
         }
 
         // 書き込む内容を文字列に変換
         const contentStr = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
 
-        await fs.writeFile(fullPath, contentStr, 'utf-8');
-
-        context.logs.push(`[WriteFile] ${node.data.label}: 書き込み成功 (${contentStr.length} 文字)`);
-        return {
-          success: true,
-          output: {
-            filePath: normalizedPath,
-            fullPath: resolvedFull,
-            size: contentStr.length,
-            overwritten: fileExists,
-            message: `ファイル ${normalizedPath} に書き込みました`,
-          },
-        };
+        // 書き込みモードに応じて処理
+        if (writeMode === 'append') {
+          await fs.appendFile(fullPath, contentStr, 'utf-8');
+          context.logs.push(`[WriteFile] ${node.data.label}: 追記成功 (${contentStr.length} 文字)`);
+          return {
+            success: true,
+            output: {
+              filePath: normalizedPath,
+              fullPath: resolvedFull,
+              size: contentStr.length,
+              appended: true,
+              message: `ファイル ${normalizedPath} に追記しました`,
+            },
+          };
+        } else {
+          await fs.writeFile(fullPath, contentStr, 'utf-8');
+          context.logs.push(`[WriteFile] ${node.data.label}: 書き込み成功 (${contentStr.length} 文字)`);
+          return {
+            success: true,
+            output: {
+              filePath: normalizedPath,
+              fullPath: resolvedFull,
+              size: contentStr.length,
+              overwritten: fileExists,
+              message: `ファイル ${normalizedPath} に書き込みました`,
+            },
+          };
+        }
       }
 
       // クライアントサイドではモック
@@ -1947,22 +2561,164 @@ const writeFileExecutor: NodeExecutor = {
 };
 
 // ForEach ノード
+// forEachExecutorは特殊なエグゼキューターで、executeFlow内で特別処理される
+// このエグゼキューターはフラグを返すのみで、実際のループ処理はexecuteFlow内で行われる
 const forEachExecutor: NodeExecutor = {
   async execute(node, inputs, context) {
+    const config = node.data.config || {};
     const array = inputs.array || inputs.input || [];
+    const variableName = config.variableName || 'item';
+    const indexName = config.indexName || 'index';
 
-    if (!Array.isArray(array)) {
-      context.logs.push(`[ForEach] ${node.data.label}: 配列ではありません`);
-      return { success: true, output: { items: [array], complete: true } };
+    // 配列でない場合は単一要素の配列として扱う
+    const items = Array.isArray(array) ? array : [array];
+
+    if (items.length === 0) {
+      context.logs.push(`[ForEach] ${node.data.label}: 空の配列、スキップ`);
+      return {
+        success: true,
+        output: {
+          items: [],
+          results: [],
+          isForEachNode: true,
+          variableName,
+          indexName,
+          complete: true,
+        },
+      };
     }
 
-    context.logs.push(`[ForEach] ${node.data.label}: ${array.length} 件処理`);
+    context.logs.push(`[ForEach] ${node.data.label}: ${items.length} 件のループ処理を開始`);
+
+    // forEachノードの出力として配列情報を返す
+    // 実際のループ処理はexecuteFlow内で行われる
     return {
       success: true,
-      output: { items: array, complete: true },
+      output: {
+        items,
+        results: [], // ループ結果はexecuteFlowで設定される
+        isForEachNode: true,
+        variableName,
+        indexName,
+        currentIndex: 0,
+        complete: false, // ループ処理がまだ完了していないことを示す
+      },
     };
   },
 };
+
+// ループボディを実行するヘルパー関数
+async function executeLoopBody(
+  forEachNode: FlowNode,
+  items: any[],
+  variableName: string,
+  indexName: string,
+  allNodes: FlowNode[],
+  edges: FlowEdge[],
+  context: ExecutionContext,
+  executorMapRef: Record<string, NodeExecutor>
+): Promise<{ success: boolean; results: any[]; error?: string }> {
+  const { bodyNodes } = getLoopBodyNodes(forEachNode, allNodes, edges);
+
+  if (bodyNodes.length === 0) {
+    context.logs.push(`[ForEach] ループボディにノードがありません`);
+    return { success: true, results: items };
+  }
+
+  const sortedBodyNodes = sortLoopBodyNodes(bodyNodes, edges);
+  context.logs.push(`[ForEach] ループボディノード: ${sortedBodyNodes.map(n => n.data.label).join(' → ')}`);
+
+  const results: any[] = [];
+
+  // 各要素に対してループボディを実行
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    context.logs.push(`[ForEach] --- イテレーション ${i + 1}/${items.length} ---`);
+
+    // ループ変数をコンテキストに設定
+    context.memory.set(variableName, item);
+    context.memory.set(indexName, i);
+    context.memory.set('loopItem', item);
+    context.memory.set('loopIndex', i);
+
+    // forEachノードの出力を現在のアイテムに設定
+    context.nodeOutputs.set(forEachNode.id, item);
+
+    let iterationOutput: any = item;
+
+    // ループボディの各ノードを実行
+    for (const bodyNode of sortedBodyNodes) {
+      const typeVariants = [
+        bodyNode.data.type,
+        bodyNode.type,
+        bodyNode.data.category,
+      ].filter(Boolean);
+
+      let executor: NodeExecutor = defaultExecutor;
+
+      for (const t of typeVariants) {
+        if (executorMapRef[t]) {
+          executor = executorMapRef[t];
+          break;
+        }
+      }
+
+      // 入力を収集
+      const nodeInputs = collectNodeInputs(bodyNode, edges, context.nodeOutputs, allNodes);
+
+      // ノード実行開始時刻を記録
+      const nodeStartTime = Date.now();
+
+      // ノードを実行
+      const result = await executor.execute(bodyNode, nodeInputs, context);
+
+      // ノード実行時間
+      const nodeExecutionTime = Date.now() - nodeStartTime;
+
+      if (!result.success) {
+        context.logs.push(`[ForEach] [ERROR] イテレーション ${i + 1} でエラー: ${result.error}`);
+        context.nodeExecutionLogs.push({
+          nodeId: bodyNode.id,
+          nodeName: `${bodyNode.data.label} (iter ${i + 1})`,
+          nodeType: bodyNode.data.type || bodyNode.type || 'unknown',
+          inputs: nodeInputs,
+          output: null,
+          executionTime: nodeExecutionTime,
+          status: 'error',
+          error: result.error,
+          timestamp: Date.now(),
+        });
+        return {
+          success: false,
+          results,
+          error: `Loop iteration ${i + 1} failed: ${result.error}`,
+        };
+      }
+
+      // 出力を保存
+      context.nodeOutputs.set(bodyNode.id, result.output);
+      iterationOutput = result.output;
+
+      // 成功ログを記録
+      context.nodeExecutionLogs.push({
+        nodeId: bodyNode.id,
+        nodeName: `${bodyNode.data.label} (iter ${i + 1})`,
+        nodeType: bodyNode.data.type || bodyNode.type || 'unknown',
+        inputs: nodeInputs,
+        output: result.output,
+        executionTime: nodeExecutionTime,
+        status: 'success',
+        timestamp: Date.now(),
+      });
+    }
+
+    // このイテレーションの最終出力を結果に追加
+    results.push(iterationOutput);
+  }
+
+  context.logs.push(`[ForEach] ループ完了: ${results.length} 件の結果`);
+  return { success: true, results };
+}
 
 // ============================================
 // Document Loader ノードエグゼキューター
@@ -2860,88 +3616,112 @@ const owlAgentExecutor: NodeExecutor = {
       };
     }
 
-    context.logs.push(`[OwlAgent] ${node.data.label}: OwlAgent "${agentId}" を実行開始`);
+    // 循環参照検出: owlAgentStackを初期化または取得
+    if (!context.owlAgentStack) {
+      context.owlAgentStack = new Set<string>();
+    }
 
-    // OwlAgentを読み込み
-    const owlAgent = await loadOwlAgent(agentId);
-    if (!owlAgent) {
-      context.logs.push(`[OwlAgent] ${node.data.label}: エラー - エージェント "${agentId}" が見つかりません`);
+    // 循環参照チェック
+    if (context.owlAgentStack.has(agentId)) {
+      const stackPath = Array.from(context.owlAgentStack).join(' → ') + ' → ' + agentId;
+      context.logs.push(`[OwlAgent] ${node.data.label}: 循環参照を検出！ (${stackPath})`);
       return {
         success: false,
         output: null,
-        error: `OwlAgent "${agentId}" が見つかりません`,
+        error: `OwlAgent "${agentId}" の循環参照を検出しました: ${stackPath}`,
       };
     }
 
-    context.logs.push(`[OwlAgent] エージェント "${owlAgent.name}" をロードしました`);
+    // スタックに追加
+    context.owlAgentStack.add(agentId);
+    context.logs.push(`[OwlAgent] ${node.data.label}: OwlAgent "${agentId}" を実行開始 (スタック深度: ${context.owlAgentStack.size})`);
 
-    // 入力マッピングを適用
-    let mappedInput = userMessage;
-    if (Object.keys(inputMapping).length > 0) {
-      mappedInput = {};
-      for (const [targetKey, sourceKey] of Object.entries(inputMapping)) {
-        const source = sourceKey as string;
-        if (source.startsWith('context.')) {
-          const key = source.replace('context.', '');
-          (mappedInput as Record<string, any>)[targetKey] = (context as Record<string, any>)[key];
-        } else if (source.startsWith('inputs.')) {
-          const key = source.replace('inputs.', '');
-          (mappedInput as Record<string, any>)[targetKey] = (inputs as Record<string, any>)[key];
-        } else {
-          (mappedInput as Record<string, any>)[targetKey] = inputs[source] || source;
+    try {
+      // OwlAgentを読み込み
+      const owlAgent = await loadOwlAgent(agentId);
+      if (!owlAgent) {
+        context.logs.push(`[OwlAgent] ${node.data.label}: エラー - エージェント "${agentId}" が見つかりません`);
+        return {
+          success: false,
+          output: null,
+          error: `OwlAgent "${agentId}" が見つかりません`,
+        };
+      }
+
+      context.logs.push(`[OwlAgent] エージェント "${owlAgent.name}" をロードしました`);
+
+      // 入力マッピングを適用
+      let mappedInput = userMessage;
+      if (Object.keys(inputMapping).length > 0) {
+        mappedInput = {};
+        for (const [targetKey, sourceKey] of Object.entries(inputMapping)) {
+          const source = sourceKey as string;
+          if (source.startsWith('context.')) {
+            const key = source.replace('context.', '');
+            (mappedInput as Record<string, any>)[targetKey] = (context as Record<string, any>)[key];
+          } else if (source.startsWith('inputs.')) {
+            const key = source.replace('inputs.', '');
+            (mappedInput as Record<string, any>)[targetKey] = (inputs as Record<string, any>)[key];
+          } else {
+            (mappedInput as Record<string, any>)[targetKey] = inputs[source] || source;
+          }
         }
       }
-    }
 
-    // 再帰的にサブフローを実行
-    const subFlow = owlAgent.flow;
-    if (!subFlow || !subFlow.nodes || subFlow.nodes.length === 0) {
-      context.logs.push(`[OwlAgent] ${node.data.label}: 警告 - エージェントにフローが定義されていません`);
+      // 再帰的にサブフローを実行
+      const subFlow = owlAgent.flow;
+      if (!subFlow || !subFlow.nodes || subFlow.nodes.length === 0) {
+        context.logs.push(`[OwlAgent] ${node.data.label}: 警告 - エージェントにフローが定義されていません`);
+        return {
+          success: true,
+          output: { message: `OwlAgent "${owlAgent.name}" にはフローが定義されていません`, input: mappedInput },
+        };
+      }
+
+      context.logs.push(`[OwlAgent] サブフロー実行開始 (ノード数: ${subFlow.nodes.length})`);
+
+      // サブフローを実行（循環参照スタックを引き継ぐ）
+      const subResult = await executeFlowWithContext(
+        subFlow.nodes,
+        subFlow.edges,
+        mappedInput,
+        context.sessionId,
+        context.owlAgentStack
+      );
+
+      // 実行ログをマージ
+      subResult.logs.forEach((log: string) => {
+        context.logs.push(`  [Sub] ${log}`);
+      });
+
+      if (!subResult.success) {
+        context.logs.push(`[OwlAgent] ${node.data.label}: サブフロー実行失敗`);
+        return {
+          success: false,
+          output: null,
+          error: subResult.error || 'サブフロー実行に失敗しました',
+        };
+      }
+
+      // 出力マッピングを適用
+      let finalOutput = subResult.output;
+      if (Object.keys(outputMapping).length > 0 && typeof subResult.output === 'object') {
+        finalOutput = {};
+        for (const [targetKey, sourceKey] of Object.entries(outputMapping)) {
+          const source = sourceKey as string;
+          (finalOutput as Record<string, any>)[targetKey] = subResult.output[source] || subResult.output;
+        }
+      }
+
+      context.logs.push(`[OwlAgent] ${node.data.label}: OwlAgent "${owlAgent.name}" 実行完了`);
       return {
         success: true,
-        output: { message: `OwlAgent "${owlAgent.name}" にはフローが定義されていません`, input: mappedInput },
+        output: finalOutput,
       };
+    } finally {
+      // スタックから削除（必ず実行）
+      context.owlAgentStack.delete(agentId);
     }
-
-    context.logs.push(`[OwlAgent] サブフロー実行開始 (ノード数: ${subFlow.nodes.length})`);
-
-    // サブフローを実行（再帰呼び出し）
-    const subResult = await executeFlow(
-      subFlow.nodes,
-      subFlow.edges,
-      mappedInput,
-      context.sessionId
-    );
-
-    // 実行ログをマージ
-    subResult.logs.forEach((log: string) => {
-      context.logs.push(`  [Sub] ${log}`);
-    });
-
-    if (!subResult.success) {
-      context.logs.push(`[OwlAgent] ${node.data.label}: サブフロー実行失敗`);
-      return {
-        success: false,
-        output: null,
-        error: subResult.error || 'サブフロー実行に失敗しました',
-      };
-    }
-
-    // 出力マッピングを適用
-    let finalOutput = subResult.output;
-    if (Object.keys(outputMapping).length > 0 && typeof subResult.output === 'object') {
-      finalOutput = {};
-      for (const [targetKey, sourceKey] of Object.entries(outputMapping)) {
-        const source = sourceKey as string;
-        (finalOutput as Record<string, any>)[targetKey] = subResult.output[source] || subResult.output;
-      }
-    }
-
-    context.logs.push(`[OwlAgent] ${node.data.label}: OwlAgent "${owlAgent.name}" 実行完了`);
-    return {
-      success: true,
-      output: finalOutput,
-    };
   },
 };
 
@@ -3171,12 +3951,25 @@ const executorMap: Record<string, NodeExecutor> = {
   Agents: agentExecutor,
 };
 
+// OwlAgentスタックを引き継いでサブフローを実行する関数
+async function executeFlowWithContext(
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  input: any,
+  sessionId?: string,
+  owlAgentStack?: Set<string>
+): Promise<ExecutionResult> {
+  // owlAgentStackを直接executeFlowに渡す
+  return await executeFlow(nodes, edges, input, sessionId, owlAgentStack);
+}
+
 // メインの実行エンジン
 export async function executeFlow(
   nodes: FlowNode[],
   edges: FlowEdge[],
   input: any,
-  sessionId?: string
+  sessionId?: string,
+  _owlAgentStack?: Set<string>
 ): Promise<ExecutionResult> {
   const startTime = Date.now();
 
@@ -3187,6 +3980,7 @@ export async function executeFlow(
     logs: [],
     memory: new Map(),
     nodeExecutionLogs: [],
+    owlAgentStack: _owlAgentStack,
   };
 
   context.logs.push(`=== OwliaFabrica Native Engine ===`);
@@ -3242,8 +4036,17 @@ export async function executeFlow(
 
     let finalOutput: any = null;
 
+    // forEachノードのループボディに含まれるノードIDを収集（重複実行を防ぐ）
+    const loopBodyNodeIds = new Set<string>();
+
     // 各ノードを順番に実行
     for (const node of executableNodes) {
+      // ループボディとして既に実行されたノードはスキップ
+      if (loopBodyNodeIds.has(node.id)) {
+        context.logs.push(`[Skip] ${node.data.label}: ループボディとして既に実行済み`);
+        continue;
+      }
+
       // 複数のタイプ候補をチェック（data.type, type, category順）
       const typeVariants = [
         node.data.type,
@@ -3306,6 +4109,74 @@ export async function executeFlow(
       // 出力を保存
       context.nodeOutputs.set(node.id, result.output);
       finalOutput = result.output;
+
+      // forEachノードの場合、ループ処理を実行
+      if (result.output && result.output.isForEachNode && !result.output.complete) {
+        const { items, variableName, indexName } = result.output;
+
+        // ループボディのノードを特定
+        const { bodyNodes } = getLoopBodyNodes(node, nodes, edges);
+
+        if (bodyNodes.length > 0) {
+          // ループボディを実行
+          const loopResult = await executeLoopBody(
+            node,
+            items,
+            variableName,
+            indexName,
+            nodes,
+            edges,
+            context,
+            executorMap
+          );
+
+          if (!loopResult.success) {
+            context.logs.push(`[ForEach] ${node.data.label}: ループ処理でエラー`);
+            return {
+              success: false,
+              output: null,
+              executionTime: Date.now() - startTime,
+              logs: context.logs,
+              error: loopResult.error,
+              nodeExecutionLogs: context.nodeExecutionLogs,
+            };
+          }
+
+          // ループ結果を出力に設定
+          const loopOutput = {
+            items,
+            results: loopResult.results,
+            isForEachNode: true,
+            complete: true,
+          };
+          context.nodeOutputs.set(node.id, loopOutput);
+          finalOutput = loopOutput;
+
+          // ループボディのノードを実行済みとしてマーク（後続の通常実行でスキップするため）
+          bodyNodes.forEach(bodyNode => {
+            loopBodyNodeIds.add(bodyNode.id);
+            if (!context.nodeOutputs.has(bodyNode.id)) {
+              // 最後のイテレーションの出力を設定
+              context.nodeOutputs.set(bodyNode.id, loopResult.results[loopResult.results.length - 1]);
+            }
+          });
+
+          // forEachノードの成功ログを記録
+          context.nodeExecutionLogs.push({
+            nodeId: node.id,
+            nodeName: node.data.label,
+            nodeType: 'forEach',
+            inputs,
+            output: loopOutput,
+            executionTime: Date.now() - nodeStartTime,
+            status: 'success',
+            timestamp: Date.now(),
+          });
+
+          // ループボディのノードはスキップ（既に実行済み）
+          continue;
+        }
+      }
 
       // Human Review で待機が必要な場合
       if (result.pendingReview && context.pendingReview) {
@@ -3379,7 +4250,8 @@ export async function executeFlowFromNode(
   startNodeId: string,
   startNodeOutput: any,
   previousOutputs: Record<string, any>,
-  sessionId?: string
+  sessionId?: string,
+  previousNodeExecutionLogs: NodeExecutionLog[] = []
 ): Promise<ExecutionResult> {
   const startTime = Date.now();
 
@@ -3389,7 +4261,7 @@ export async function executeFlowFromNode(
     nodeOutputs: new Map(Object.entries(previousOutputs)),
     logs: [],
     memory: new Map(),
-    nodeExecutionLogs: [],
+    nodeExecutionLogs: [...previousNodeExecutionLogs], // 以前のログを引き継ぐ
   };
 
   // 開始ノードの出力を設定
@@ -3397,6 +4269,9 @@ export async function executeFlowFromNode(
 
   context.logs.push(`=== Human Review後の継続実行 ===`);
   context.logs.push(`開始ノード: ${startNodeId}`);
+  if (previousNodeExecutionLogs.length > 0) {
+    context.logs.push(`引き継いだ実行ログ: ${previousNodeExecutionLogs.length}件`);
+  }
 
   try {
     // トポロジカルソート

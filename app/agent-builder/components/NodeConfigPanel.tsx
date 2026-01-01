@@ -40,6 +40,7 @@ import { getNodeDefinition, NodeInputParam, NodeHandle } from '../types/node-def
 import { getNodeReference } from '../types/node-references';
 import { CustomNodeData } from './CustomNode';
 import FileDropZone from './FileDropZone';
+import FunctionCallingSection from './FunctionCallingSection';
 
 interface SavedOwlAgent {
   id: string;
@@ -53,15 +54,24 @@ interface NodeConfigPanelProps {
   onClose: () => void;
   onSave: (nodeId: string, config: Record<string, any>, humanReview?: CustomNodeData['humanReview']) => void;
   savedOwlAgents?: SavedOwlAgent[];
+  connectedTools?: { id: string; label: string; type: string }[];
 }
 
+// ツール関連のパラメータ名
+const TOOL_RELATED_PARAMS = ['enableTools', 'builtinTools', 'toolAgents', 'toolChoice', 'maxIterations', 'toolSettings'];
+
 // 入力パラメータをグループ化するための分類
-function categorizeInputs(inputs: NodeInputParam[]) {
+function categorizeInputs(inputs: NodeInputParam[], excludeToolParams: boolean = false) {
   const credentials: NodeInputParam[] = [];
   const basic: NodeInputParam[] = [];
   const advanced: NodeInputParam[] = [];
 
   inputs.forEach((input) => {
+    // ツール関連パラメータを除外（LLMノードでFunctionCallingSectionを使用する場合）
+    if (excludeToolParams && TOOL_RELATED_PARAMS.includes(input.name)) {
+      return;
+    }
+
     // Credential系（API Key, Password, Secret等）
     if (
       input.type === 'password' ||
@@ -95,7 +105,7 @@ function categorizeInputs(inputs: NodeInputParam[]) {
   return { credentials, basic, advanced };
 }
 
-export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, savedOwlAgents = [] }: NodeConfigPanelProps) {
+export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, savedOwlAgents = [], connectedTools = [] }: NodeConfigPanelProps) {
   const [config, setConfig] = useState<Record<string, any>>(nodeData.config || {});
   const [humanReview, setHumanReview] = useState(nodeData.humanReview || {
     enabled: false,
@@ -109,11 +119,14 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
 
   const nodeDefinition = getNodeDefinition(nodeData.type);
 
-  // 入力パラメータをカテゴリ分け
+  // LLMノードかどうかを判定（Function Calling対応ノード）
+  const isLLMNode = nodeData.type === 'azureChatOpenAI';
+
+  // 入力パラメータをカテゴリ分け（LLMノードの場合はツール関連パラメータを除外）
   const categorizedInputs = useMemo(() => {
     if (!nodeDefinition) return { credentials: [], basic: [], advanced: [] };
-    return categorizeInputs(nodeDefinition.inputs);
-  }, [nodeDefinition]);
+    return categorizeInputs(nodeDefinition.inputs, isLLMNode);
+  }, [nodeDefinition, isLLMNode]);
 
   // nodeIdまたはnodeDataが変更されたらconfigとhumanReviewを更新
   useEffect(() => {
@@ -190,7 +203,7 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
 
     // 共通のラベルヘルパー
     const labelWithTooltip = (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
         {input.label}
         {input.required && <span style={{ color: '#f44336' }}>*</span>}
         {input.description && (
@@ -198,7 +211,7 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
             <HelpOutlineIcon sx={{ fontSize: 14, color: '#666', cursor: 'help' }} />
           </Tooltip>
         )}
-      </Box>
+      </span>
     );
 
     switch (input.type) {
@@ -1114,6 +1127,26 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
               </Box>
             </AccordionDetails>
           </Accordion>
+        )}
+
+        {/* Function Calling設定（LLMノードのみ） */}
+        {isLLMNode && (
+          <FunctionCallingSection
+            enableTools={config.enableTools ?? false}
+            onEnableToolsChange={(enabled) => handleConfigChange('enableTools', enabled)}
+            builtinTools={config.builtinTools ?? []}
+            onBuiltinToolsChange={(tools) => handleConfigChange('builtinTools', tools)}
+            toolAgents={config.toolAgents ?? []}
+            onToolAgentsChange={(agents) => handleConfigChange('toolAgents', agents)}
+            toolChoice={config.toolChoice ?? 'auto'}
+            onToolChoiceChange={(choice) => handleConfigChange('toolChoice', choice)}
+            maxIterations={config.maxIterations ?? 5}
+            onMaxIterationsChange={(iterations) => handleConfigChange('maxIterations', iterations)}
+            toolSettings={config.toolSettings ?? {}}
+            onToolSettingsChange={(settings) => handleConfigChange('toolSettings', settings)}
+            savedOwlAgents={savedOwlAgents}
+            connectedTools={connectedTools}
+          />
         )}
 
         <Divider sx={{ borderColor: '#2d2d44', my: 2 }} />

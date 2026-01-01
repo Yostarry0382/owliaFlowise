@@ -117,6 +117,7 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
   const [executionContext, setExecutionContext] = useState<{
     nodeOutputs: Record<string, any>;
     currentNodeIndex: number;
+    nodeExecutionLogs: NodeExecutionLog[];
   } | null>(null);
 
   // OwlAgentノードを検出
@@ -208,6 +209,9 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
     // 承認または編集の場合、フロー実行を継続
     setIsRunning(true);
 
+    // 以前のログを保持
+    const previousLogs = executionContext?.nodeExecutionLogs || [];
+
     try {
       const response = await fetch('/api/flows/execute', {
         method: 'POST',
@@ -239,12 +243,16 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
           reviewNodeId: pendingReview.nodeId,
           reviewDecision: decision,
           previousOutputs: executionContext?.nodeOutputs,
+          previousNodeExecutionLogs: previousLogs,
           input,
           useNative: true,
         }),
       });
 
       const data = await response.json();
+
+      // 以前のログと新しいログをマージ
+      const mergedLogs = [...previousLogs, ...(data.nodeExecutionLogs || [])];
 
       // 再び Human Review が必要な場合
       if (data.pendingReview) {
@@ -256,6 +264,7 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
         setExecutionContext({
           nodeOutputs: data.nodeOutputs || {},
           currentNodeIndex: data.currentNodeIndex || 0,
+          nodeExecutionLogs: mergedLogs,
         });
         setShowReviewModal(true);
         setResult({
@@ -265,7 +274,7 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
           executionTime: data.executionTime,
           logs: data.logs,
           pendingReview: data.pendingReview,
-          nodeExecutionLogs: data.nodeExecutionLogs,
+          nodeExecutionLogs: mergedLogs,
         });
       } else {
         // 実行完了
@@ -276,7 +285,7 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
           executionTime: data.executionTime,
           error: data.error,
           logs: data.logs,
-          nodeExecutionLogs: data.nodeExecutionLogs,
+          nodeExecutionLogs: mergedLogs,
         });
         setPendingReview(null);
         setExecutionContext(null);
@@ -285,6 +294,8 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
       setResult({
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred',
+        // エラー時も以前のログを保持
+        nodeExecutionLogs: previousLogs,
       });
     } finally {
       setIsRunning(false);
@@ -346,6 +357,7 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
         setExecutionContext({
           nodeOutputs: data.nodeOutputs || {},
           currentNodeIndex: data.currentNodeIndex || 0,
+          nodeExecutionLogs: data.nodeExecutionLogs || [],
         });
         setShowReviewModal(true);
         setResult({

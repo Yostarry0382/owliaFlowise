@@ -43,7 +43,7 @@ export default function NodePalette({ savedOwlAgents = [], onDragStart }: NodePa
   // OwlAgentを編集
   const handleEditAgent = (agentId: string, event: React.MouseEvent) => {
     event.stopPropagation(); // ドラッグを防止
-    router.push(`/agent-canvas/${agentId}`);
+    router.push(`/agent-builder?id=${agentId}`);
   };
 
   const handleAccordionChange = (category: NodeCategory) => (_event: React.SyntheticEvent, isExpanded: boolean) => {
