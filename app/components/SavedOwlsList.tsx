@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Typography, Button } from '@mui/material';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Typography, Button, Snackbar, Alert, CircularProgress } from '@mui/material';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ChatIcon from '@mui/icons-material/Chat';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import { useRouter } from 'next/navigation';
+import { useNotification } from '../hooks/useNotification';
 
 // Type definitions
 type AbilityRank = 'S' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
@@ -89,77 +90,87 @@ export default function SavedOwlsList() {
   const [selectedOwl, setSelectedOwl] = useState<SavedOwl | null>(null);
   const [savedOwls, setSavedOwls] = useState<SavedOwl[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const { snackbar, showSuccess, showError, showWarning, closeSnackbar } = useNotification();
 
   const flowiseUrl = process.env.NEXT_PUBLIC_FLOWISE_API_URL || 'http://localhost:3000';
 
   // OwliaFabricaの編集画面に遷移
-  const handleEditInOwliaFabrica = (agentId: string) => {
+  const handleEditInOwliaFabrica = useCallback((agentId: string) => {
     router.push(`/agent-builder?id=${agentId}`);
-  };
+  }, [router]);
 
   // Fetch saved owls from API
-  const fetchSavedOwls = async () => {
+  const fetchSavedOwls = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetch('/api/owlagents');
-      if (response.ok) {
-        const data = await response.json();
-        const transformedOwls: SavedOwl[] = data.map((agent: any) => {
-          return {
-            ...agent,
-            avatarColor: `bg-${['blue', 'green', 'purple', 'orange', 'red'][Math.floor(Math.random() * 5)]}-500`,
-            avatarEmoji: agent.icon || '🦉',
-            category: agent.tags?.[0] || 'カスタム',
-            totalRuns: Math.floor(Math.random() * 1000),
-            likes: Math.floor(Math.random() * 100),
-            abilities: generateAbilities(),
-            tags: agent.tags || [],
-          };
-        });
-        setSavedOwls(transformedOwls);
-        if (transformedOwls.length > 0 && !selectedOwl) {
-          setSelectedOwl(transformedOwls[0]);
-        }
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+      const transformedOwls: SavedOwl[] = data.map((agent: SavedOwl) => {
+        return {
+          ...agent,
+          avatarColor: `bg-${['blue', 'green', 'purple', 'orange', 'red'][Math.floor(Math.random() * 5)]}-500`,
+          avatarEmoji: agent.avatarEmoji || '🦉',
+          category: agent.tags?.[0] || 'カスタム',
+          totalRuns: agent.totalRuns ?? Math.floor(Math.random() * 1000),
+          likes: agent.likes ?? Math.floor(Math.random() * 100),
+          abilities: agent.abilities ?? generateAbilities(),
+          tags: agent.tags || [],
+        };
+      });
+      setSavedOwls(transformedOwls);
+      if (transformedOwls.length > 0) {
+        setSelectedOwl((prev) => prev ?? transformedOwls[0]);
       }
     } catch (error) {
-      console.error('Failed to fetch saved owls:', error);
+      showError(error, 'OwlAgentの読み込みに失敗しました');
     } finally {
       setLoading(false);
     }
-  };
+  }, [showError]);
 
   useEffect(() => {
     fetchSavedOwls();
-  }, []);
+  }, [fetchSavedOwls]);
 
-  const handleDelete = async (owlId: string) => {
+  const handleDelete = useCallback(async (owlId: string) => {
+    const owlToDelete = savedOwls.find(owl => owl.id === owlId);
+    if (!owlToDelete) return;
+
     if (!confirm('このOwlAgentを削除しますか？この操作は元に戻せません。')) {
       return;
     }
 
+    setIsDeleting(true);
     try {
       const response = await fetch(`/api/owlagents/${owlId}`, {
         method: 'DELETE',
       });
 
-      if (response.ok) {
-        // 削除成功後、リストを更新
-        const remainingOwls = savedOwls.filter(owl => owl.id !== owlId);
-        setSavedOwls(remainingOwls);
-
-        // 削除したのが選択中のOwlAgentの場合、次のOwlAgentを選択
-        if (selectedOwl?.id === owlId) {
-          setSelectedOwl(remainingOwls.length > 0 ? remainingOwls[0] : null);
-        }
-      } else {
-        const errorData = await response.json();
-        alert(`削除に失敗しました: ${errorData.error || '不明なエラー'}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `削除に失敗しました (HTTP ${response.status})`);
       }
+
+      // 削除成功後、リストを更新
+      const remainingOwls = savedOwls.filter(owl => owl.id !== owlId);
+      setSavedOwls(remainingOwls);
+
+      // 削除したのが選択中のOwlAgentの場合、次のOwlAgentを選択
+      if (selectedOwl?.id === owlId) {
+        setSelectedOwl(remainingOwls.length > 0 ? remainingOwls[0] : null);
+      }
+
+      showSuccess(`「${owlToDelete.name}」を削除しました`);
     } catch (error) {
-      console.error('Failed to delete owl:', error);
-      alert('削除中にエラーが発生しました');
+      showError(error, '削除に失敗しました');
+    } finally {
+      setIsDeleting(false);
     }
-  };
+  }, [savedOwls, selectedOwl, showSuccess, showError]);
 
   const handleOpenInFlowise = (chatflowId?: string) => {
     if (chatflowId) {
@@ -169,18 +180,19 @@ export default function SavedOwlsList() {
     }
   };
 
-  const handleOpenChat = (chatflowId?: string) => {
+  const handleOpenChat = useCallback((chatflowId?: string) => {
     if (chatflowId) {
       window.open(`/chat?chatflow=${chatflowId}`, '_blank');
     } else {
-      alert('このエージェントにはFlowiseのChatflow IDが設定されていません');
+      showWarning('このエージェントにはFlowiseのChatflow IDが設定されていません');
     }
-  };
+  }, [showWarning]);
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center" style={{ backgroundColor: '#1a1a2e' }}>
-        <div className="text-white text-2xl">Loading...</div>
+      <div className="h-full flex flex-col items-center justify-center gap-4" style={{ backgroundColor: '#1a1a2e' }}>
+        <CircularProgress size={48} sx={{ color: '#e94560' }} />
+        <div className="text-white text-lg">OwlAgentを読み込み中...</div>
       </div>
     );
   }
@@ -394,11 +406,16 @@ export default function SavedOwlsList() {
 
                     <button
                       onClick={() => handleDelete(selectedOwl.id)}
-                      className="px-6 py-2 rounded-full font-bold text-sm shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all flex items-center gap-1"
+                      disabled={isDeleting}
+                      className="px-6 py-2 rounded-full font-bold text-sm shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                       style={{ backgroundColor: '#e94560', color: '#fff' }}
                     >
-                      <DeleteIcon sx={{ fontSize: 16 }} />
-                      削除
+                      {isDeleting ? (
+                        <CircularProgress size={16} sx={{ color: '#fff' }} />
+                      ) : (
+                        <DeleteIcon sx={{ fontSize: 16 }} />
+                      )}
+                      {isDeleting ? '削除中...' : '削除'}
                     </button>
                   </div>
                 </div>
@@ -407,6 +424,18 @@ export default function SavedOwlsList() {
           </div>
         </div>
       </div>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={closeSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={closeSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </div>
   );
 }

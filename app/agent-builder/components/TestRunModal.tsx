@@ -49,6 +49,7 @@ import {
   convertFlowToFlowise,
   FlowiseExecutionResult,
 } from '../lib/flowise-converter';
+import { parseError, getUserFriendlyMessage } from '../../lib/notification';
 
 // OwlAgentの展開情報の型
 interface ExpandedOwlAgentInfo {
@@ -133,15 +134,19 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
 
     setIsLoadingAgents(true);
     const agentMap = new Map<string, ExpandedOwlAgentInfo>();
+    const errors: string[] = [];
 
     try {
-      for (const node of owlAgentNodes) {
-        const agentId = node.data.agentId || node.data.config?.agentId;
-        if (!agentId || agentMap.has(agentId)) continue;
+      await Promise.all(
+        owlAgentNodes.map(async (node) => {
+          const agentId = node.data.agentId || node.data.config?.agentId;
+          if (!agentId || agentMap.has(agentId)) return;
 
-        try {
-          const response = await fetch(`/api/owlagents?id=${agentId}`);
-          if (response.ok) {
+          try {
+            const response = await fetch(`/api/owlagents?id=${agentId}`);
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
             const agentData = await response.json();
             agentMap.set(agentId, {
               agentId: agentData.id,
@@ -149,12 +154,18 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
               description: agentData.description,
               flow: agentData.flow,
             });
+          } catch (error) {
+            const appError = parseError(error);
+            errors.push(`OwlAgent ${agentId}: ${getUserFriendlyMessage(appError)}`);
           }
-        } catch (error) {
-          console.error(`Failed to fetch OwlAgent ${agentId}:`, error);
-        }
-      }
+        })
+      );
       setExpandedOwlAgents(agentMap);
+
+      // エラーがあった場合は結果に含める（ただし処理は継続）
+      if (errors.length > 0) {
+        console.warn('Some OwlAgents failed to load:', errors);
+      }
     } finally {
       setIsLoadingAgents(false);
     }
@@ -176,6 +187,11 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
   const flowiseData = useMemo(() => {
     return convertFlowToFlowise(nodes, edges, undefined, expandedOwlAgents);
   }, [nodes, edges, expandedOwlAgents]);
+
+  // JSON表示用のキャッシュ（毎フレームのJSON.stringifyを防止）
+  const flowiseDataJson = useMemo(() => {
+    return JSON.stringify(flowiseData, null, 2);
+  }, [flowiseData]);
 
   // モーダルを開くたびにリセット
   useEffect(() => {
@@ -291,9 +307,10 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
         setExecutionContext(null);
       }
     } catch (error) {
+      const appError = parseError(error);
       setResult({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: getUserFriendlyMessage(appError, 'フロー実行を継続できませんでした'),
         // エラー時も以前のログを保持
         nodeExecutionLogs: previousLogs,
       });
@@ -383,9 +400,10 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
         });
       }
     } catch (error) {
+      const appError = parseError(error);
       setResult({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: getUserFriendlyMessage(appError, 'フローの実行に失敗しました'),
       });
     } finally {
       if (!pendingReview) {
@@ -617,7 +635,7 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
                 m: 0,
               }}
             >
-              {JSON.stringify(flowiseData, null, 2)}
+              {flowiseDataJson}
             </Typography>
           </Paper>
         </TabPanel>
