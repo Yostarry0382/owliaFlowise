@@ -16,7 +16,8 @@
       "Bash(docker rm:*)",
       "Bash(docker run:*)",
       "Bash(timeout:*)",
-      "Bash(ping:*)"
+      "Bash(ping:*)",
+      "Bash(rm:*)"
     ]
   }
 }

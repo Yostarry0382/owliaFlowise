@@ -1,0 +1,155 @@
+{
+  "id": "conversational-agent",
+  "name": "Conversational Agent",
+  "description": "会話履歴を保持する対話型エージェント。直近10ターンの会話を記憶し、文脈を理解した応答を生成します。",
+  "iconStyle": "blue",
+  "version": "1.0.0",
+  "flow": {
+    "nodes": [
+      {
+        "id": "start-conv",
+        "type": "start",
+        "position": { "x": 0, "y": 200 },
+        "data": {
+          "id": "start-conv",
+          "label": "入力受付",
+          "name": "start",
+          "type": "start",
+          "baseClasses": ["Start"],
+          "category": "flowControl",
+          "description": "ユーザーのメッセージを受け取る開始ノード",
+          "inputs": {
+            "inputLabel": "メッセージ",
+            "inputPlaceholder": "メッセージを入力...",
+            "inputType": "text",
+            "inputFields": ["userMessage", "sessionId"]
+          },
+          "outputs": {},
+          "inputAnchors": [],
+          "outputAnchors": [
+            { "label": "Output", "name": "output", "type": "any" }
+          ]
+        }
+      },
+      {
+        "id": "memory-conv",
+        "type": "bufferWindowMemory",
+        "position": { "x": 300, "y": 200 },
+        "data": {
+          "id": "memory-conv",
+          "label": "会話履歴",
+          "name": "bufferWindowMemory",
+          "type": "bufferWindowMemory",
+          "baseClasses": ["BufferWindowMemory", "Memory"],
+          "category": "memory",
+          "description": "直近10ターンの会話履歴を保持するメモリノード",
+          "inputs": {
+            "k": 10,
+            "memoryKey": "chat_history",
+            "returnMessages": true
+          },
+          "outputs": {},
+          "inputAnchors": [
+            { "label": "Input", "name": "input", "type": "any", "optional": true }
+          ],
+          "outputAnchors": [
+            { "label": "Output", "name": "output", "type": "any" },
+            { "label": "Memory", "name": "memory", "type": "memory" }
+          ]
+        }
+      },
+      {
+        "id": "llm-conv",
+        "type": "azureChatOpenAI",
+        "position": { "x": 600, "y": 200 },
+        "data": {
+          "id": "llm-conv",
+          "label": "Azure ChatOpenAI",
+          "name": "azureChatOpenAI",
+          "type": "azureChatOpenAI",
+          "baseClasses": ["AzureChatOpenAI", "ChatModel"],
+          "category": "chatModels",
+          "description": "Azure OpenAI Serviceを使用したLLM応答生成",
+          "inputs": {
+            "systemMessage": "あなたは親切で丁寧なAIアシスタントです。ユーザーの質問に日本語で分かりやすく回答してください。会話の文脈を理解し、自然な対話を心がけてください。",
+            "temperature": 0.7,
+            "maxTokens": 2000,
+            "modelName": "gpt-4o",
+            "topP": 1,
+            "frequencyPenalty": 0,
+            "presencePenalty": 0
+          },
+          "outputs": {},
+          "inputAnchors": [
+            { "label": "Input", "name": "input", "type": "any", "optional": true },
+            { "label": "Memory", "name": "memory", "type": "memory", "optional": true }
+          ],
+          "outputAnchors": [
+            { "label": "Output", "name": "output", "type": "any" },
+            { "label": "Chat Model", "name": "chatModel", "type": "chatModel" }
+          ]
+        }
+      },
+      {
+        "id": "end-conv",
+        "type": "end",
+        "position": { "x": 900, "y": 200 },
+        "data": {
+          "id": "end-conv",
+          "label": "応答出力",
+          "name": "end",
+          "type": "end",
+          "baseClasses": ["End"],
+          "category": "flowControl",
+          "description": "LLMの応答を出力する終了ノード",
+          "inputs": {
+            "outputFormat": "text"
+          },
+          "outputs": {},
+          "inputAnchors": [
+            { "label": "Input", "name": "input", "type": "any", "optional": true }
+          ],
+          "outputAnchors": []
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-start-memory",
+        "source": "start-conv",
+        "target": "memory-conv",
+        "sourceHandle": "output",
+        "targetHandle": "input",
+        "type": "buttonedge"
+      },
+      {
+        "id": "edge-memory-llm-data",
+        "source": "memory-conv",
+        "target": "llm-conv",
+        "sourceHandle": "output",
+        "targetHandle": "input",
+        "type": "buttonedge"
+      },
+      {
+        "id": "edge-memory-llm-memory",
+        "source": "memory-conv",
+        "target": "llm-conv",
+        "sourceHandle": "memory",
+        "targetHandle": "memory",
+        "type": "buttonedge"
+      },
+      {
+        "id": "edge-llm-end",
+        "source": "llm-conv",
+        "target": "end-conv",
+        "sourceHandle": "output",
+        "targetHandle": "input",
+        "type": "buttonedge"
+      }
+    ],
+    "viewport": { "x": 100, "y": 150, "zoom": 1.0 }
+  },
+  "tags": ["対話", "会話履歴", "チャット", "LLM", "Conversational Agent"],
+  "createdAt": "2025-12-25T00:00:00.000Z",
+  "updatedAt": "2025-12-25T00:00:00.000Z"
+}

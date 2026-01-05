@@ -46,32 +46,18 @@ const NODE_TYPE_MAPPING: Record<string, string> = {
   reactAgentChat: 'mrklAgentChat',
   toolAgent: 'toolAgent',
 
-  // Chains
-  llmChain: 'llmChain',
-  conversationChain: 'conversationChain',
-  retrievalQAChain: 'retrievalQAChain',
-  conversationalRetrievalQAChain: 'conversationalRetrievalQAChain',
-  apiChainGet: 'apiChain',
-  apiChainPost: 'apiChain',
-  sqlDatabaseChain: 'sqlDatabaseChain',
-
   // Tools
-  serper: 'serper',
-  tavily: 'tavilySearchResults',
-  braveSearch: 'braveSearchAPI',
-  googleCustomSearch: 'googleCustomSearch',
-  webBrowser: 'webBrowser',
   calculator: 'calculator',
   customTool: 'customTool',
-  chainTool: 'chainTool',
   retrieverTool: 'retrieverTool',
-  requestGet: 'requestsGet',
-  requestPost: 'requestsPost',
   readFile: 'readFile',
   writeFile: 'writeFile',
 
   // OwlAgent Reference
   owlAgentReference: 'chatflowTool',
+
+  // Agent As Tool
+  agentAsTool: 'chatflowTool',
 };
 
 // ============================================
@@ -161,16 +147,6 @@ function convertConfigToFlowiseInputs(
       inputs.memoryKey = config.memoryKey ?? 'chat_history';
       break;
 
-    case 'llmChain':
-    case 'conversationChain':
-      inputs.prompt = config.promptTemplate ?? '';
-      break;
-
-    case 'retrievalQAChain':
-    case 'conversationalRetrievalQAChain':
-      inputs.returnSourceDocuments = config.returnSourceDocuments ?? true;
-      break;
-
     default:
       // その他のノードはconfigをそのまま使用
       Object.assign(inputs, config);
@@ -193,16 +169,10 @@ function getBaseClasses(nodeType: string): string[] {
     openAIAssistant: ['OpenAIAssistant', 'Agent'],
     openAIFunctionAgent: ['OpenAIFunctionAgent', 'Agent'],
     openAIToolAgent: ['OpenAIToolAgent', 'Agent'],
-    llmChain: ['LLMChain', 'BaseChain'],
-    conversationChain: ['ConversationChain', 'BaseChain'],
-    retrievalQAChain: ['RetrievalQAChain', 'BaseChain'],
-    conversationalRetrievalQAChain: ['ConversationalRetrievalQAChain', 'BaseChain'],
-    serper: ['Serper', 'Tool'],
-    tavily: ['TavilySearchResults', 'Tool'],
     calculator: ['Calculator', 'Tool'],
     customTool: ['CustomTool', 'Tool'],
-    chainTool: ['ChainTool', 'Tool'],
     retrieverTool: ['RetrieverTool', 'Tool'],
+    agentAsTool: ['ChatflowTool', 'Tool'],
   };
 
   return baseClassesMap[nodeType] || ['Unknown'];

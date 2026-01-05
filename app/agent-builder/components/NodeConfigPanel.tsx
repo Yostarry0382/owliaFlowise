@@ -40,6 +40,7 @@ import { getNodeDefinition, NodeInputParam, NodeHandle } from '../types/node-def
 import { getNodeReference } from '../types/node-references';
 import { CustomNodeData } from './CustomNode';
 import FileDropZone from './FileDropZone';
+import FunctionCallingSection from './FunctionCallingSection';
 
 interface SavedOwlAgent {
   id: string;
@@ -53,15 +54,24 @@ interface NodeConfigPanelProps {
   onClose: () => void;
   onSave: (nodeId: string, config: Record<string, any>, humanReview?: CustomNodeData['humanReview']) => void;
   savedOwlAgents?: SavedOwlAgent[];
+  connectedTools?: { id: string; label: string; type: string }[];
 }
 
+// ツール関連のパラメータ名
+const TOOL_RELATED_PARAMS = ['enableTools', 'builtinTools', 'toolAgents', 'toolChoice', 'maxIterations', 'toolSettings'];
+
 // 入力パラメータをグループ化するための分類
-function categorizeInputs(inputs: NodeInputParam[]) {
+function categorizeInputs(inputs: NodeInputParam[], excludeToolParams: boolean = false) {
   const credentials: NodeInputParam[] = [];
   const basic: NodeInputParam[] = [];
   const advanced: NodeInputParam[] = [];
 
   inputs.forEach((input) => {
+    // ツール関連パラメータを除外（LLMノードでFunctionCallingSectionを使用する場合）
+    if (excludeToolParams && TOOL_RELATED_PARAMS.includes(input.name)) {
+      return;
+    }
+
     // Credential系（API Key, Password, Secret等）
     if (
       input.type === 'password' ||
@@ -95,7 +105,7 @@ function categorizeInputs(inputs: NodeInputParam[]) {
   return { credentials, basic, advanced };
 }
 
-export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, savedOwlAgents = [] }: NodeConfigPanelProps) {
+export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, savedOwlAgents = [], connectedTools = [] }: NodeConfigPanelProps) {
   const [config, setConfig] = useState<Record<string, any>>(nodeData.config || {});
   const [humanReview, setHumanReview] = useState(nodeData.humanReview || {
     enabled: false,
@@ -109,11 +119,14 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
 
   const nodeDefinition = getNodeDefinition(nodeData.type);
 
-  // 入力パラメータをカテゴリ分け
+  // LLMノードかどうかを判定（Function Calling対応ノード）
+  const isLLMNode = nodeData.type === 'azureChatOpenAI';
+
+  // 入力パラメータをカテゴリ分け（LLMノードの場合はツール関連パラメータを除外）
   const categorizedInputs = useMemo(() => {
     if (!nodeDefinition) return { credentials: [], basic: [], advanced: [] };
-    return categorizeInputs(nodeDefinition.inputs);
-  }, [nodeDefinition]);
+    return categorizeInputs(nodeDefinition.inputs, isLLMNode);
+  }, [nodeDefinition, isLLMNode]);
 
   // nodeIdまたはnodeDataが変更されたらconfigとhumanReviewを更新
   useEffect(() => {
@@ -190,7 +203,7 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
 
     // 共通のラベルヘルパー
     const labelWithTooltip = (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
         {input.label}
         {input.required && <span style={{ color: '#f44336' }}>*</span>}
         {input.description && (
@@ -198,7 +211,7 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
             <HelpOutlineIcon sx={{ fontSize: 14, color: '#666', cursor: 'help' }} />
           </Tooltip>
         )}
-      </Box>
+      </span>
     );
 
     switch (input.type) {
@@ -511,6 +524,370 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
           />
         );
 
+      case 'builtinToolSelect':
+        // 組み込みツールを選択するためのUI（カテゴリ別＋詳細設定）
+        const builtinToolDefinitions: Record<string, {
+          name: string;
+          icon: string;
+          description: string;
+          category: string;
+          settings?: { key: string; label: string; type: 'string' | 'number' | 'boolean'; default?: any; placeholder?: string; description?: string }[];
+        }> = {
+          writeFile: {
+            name: 'Write File',
+            icon: '✍️',
+            description: 'ファイルを書き込む',
+            category: 'ファイル操作',
+            settings: [
+              { key: 'basePath', label: 'Base Path', type: 'string', default: './data/output', placeholder: './data/output', description: '出力先のベースディレクトリ' },
+            ],
+          },
+          readFile: {
+            name: 'Read File',
+            icon: '📖',
+            description: 'ファイルを読み込む',
+            category: 'ファイル操作',
+            settings: [
+              { key: 'basePath', label: 'Base Path', type: 'string', default: './data', placeholder: './data', description: '読み込み元のベースディレクトリ' },
+            ],
+          },
+          pdfLoader: {
+            name: 'PDF Loader',
+            icon: '📄',
+            description: 'PDFファイルを読み込む',
+            category: 'ドキュメント読み込み',
+            settings: [
+              { key: 'basePath', label: 'Base Path', type: 'string', default: './data', placeholder: './data', description: 'PDFファイルのベースディレクトリ' },
+            ],
+          },
+          csvLoader: {
+            name: 'CSV Loader',
+            icon: '📊',
+            description: 'CSVファイルを読み込む',
+            category: 'ドキュメント読み込み',
+            settings: [
+              { key: 'basePath', label: 'Base Path', type: 'string', default: './data', placeholder: './data', description: 'CSVファイルのベースディレクトリ' },
+              { key: 'delimiter', label: 'Delimiter', type: 'string', default: ',', placeholder: ',', description: '区切り文字' },
+            ],
+          },
+          jsonLoader: {
+            name: 'JSON Loader',
+            icon: '📋',
+            description: 'JSONファイルを読み込む',
+            category: 'ドキュメント読み込み',
+            settings: [
+              { key: 'basePath', label: 'Base Path', type: 'string', default: './data', placeholder: './data', description: 'JSONファイルのベースディレクトリ' },
+            ],
+          },
+          textLoader: {
+            name: 'Text Loader',
+            icon: '📝',
+            description: 'テキストファイルを読み込む',
+            category: 'ドキュメント読み込み',
+            settings: [
+              { key: 'basePath', label: 'Base Path', type: 'string', default: './data', placeholder: './data', description: 'テキストファイルのベースディレクトリ' },
+              { key: 'maxLength', label: 'Max Length', type: 'number', default: 10000, description: '読み込む最大文字数' },
+            ],
+          },
+          docxLoader: {
+            name: 'DOCX Loader',
+            icon: '📃',
+            description: 'Wordファイルを読み込む',
+            category: 'ドキュメント読み込み',
+            settings: [
+              { key: 'basePath', label: 'Base Path', type: 'string', default: './data', placeholder: './data', description: 'DOCXファイルのベースディレクトリ' },
+            ],
+          },
+          excelLoader: {
+            name: 'Excel Loader',
+            icon: '📈',
+            description: 'Excelファイルを読み込む',
+            category: 'ドキュメント読み込み',
+            settings: [
+              { key: 'basePath', label: 'Base Path', type: 'string', default: './data', placeholder: './data', description: 'Excelファイルのベースディレクトリ' },
+              { key: 'sheetName', label: 'Sheet Name', type: 'string', placeholder: 'Sheet1', description: '読み込むシート名（空白で最初のシート）' },
+            ],
+          },
+          webSearch: {
+            name: 'Web Search',
+            icon: '🔍',
+            description: 'Web検索を実行',
+            category: 'Web・検索',
+            settings: [
+              { key: 'maxResults', label: 'Max Results', type: 'number', default: 5, description: '取得する検索結果の最大数' },
+            ],
+          },
+          webScraper: {
+            name: 'Web Scraper',
+            icon: '🌐',
+            description: 'Webページの内容を取得',
+            category: 'Web・検索',
+            settings: [
+              { key: 'maxLength', label: 'Max Length', type: 'number', default: 5000, description: '取得する最大文字数' },
+              { key: 'removeScripts', label: 'Remove Scripts', type: 'boolean', default: true, description: 'スクリプトタグを除去' },
+            ],
+          },
+          calculator: {
+            name: 'Calculator',
+            icon: '🧮',
+            description: '数式を計算',
+            category: 'ユーティリティ',
+          },
+          dateTime: {
+            name: 'Date/Time',
+            icon: '📅',
+            description: '現在の日時を取得',
+            category: 'ユーティリティ',
+            settings: [
+              { key: 'timezone', label: 'Timezone', type: 'string', default: 'Asia/Tokyo', placeholder: 'Asia/Tokyo', description: 'タイムゾーン' },
+            ],
+          },
+          jsonParser: {
+            name: 'JSON Parser',
+            icon: '🔧',
+            description: 'JSONを解析・変換',
+            category: 'ユーティリティ',
+          },
+        };
+
+        // カテゴリでグループ化
+        const toolCategories = ['ファイル操作', 'ドキュメント読み込み', 'Web・検索', 'ユーティリティ'];
+        const selectedBuiltinTools: string[] = Array.isArray(value) ? value : [];
+        const toolSettings: Record<string, Record<string, any>> = nodeData.config?.toolSettings || {};
+
+        const handleToolSettingChange = (toolId: string, settingKey: string, settingValue: any) => {
+          const currentToolSettings = nodeData.config?.toolSettings || {};
+          const newToolSettings = {
+            ...currentToolSettings,
+            [toolId]: {
+              ...(currentToolSettings[toolId] || {}),
+              [settingKey]: settingValue,
+            },
+          };
+          handleConfigChange('toolSettings', newToolSettings);
+        };
+
+        return (
+          <Box key={input.name}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+              <Typography sx={{ color: '#888', fontSize: '0.8rem' }}>
+                {input.label}
+              </Typography>
+              {input.description && (
+                <Tooltip title={input.description} arrow>
+                  <HelpOutlineIcon sx={{ fontSize: 14, color: '#666' }} />
+                </Tooltip>
+              )}
+            </Box>
+            {toolCategories.map((category) => {
+              const categoryTools = Object.entries(builtinToolDefinitions).filter(
+                ([, def]) => def.category === category
+              );
+              if (categoryTools.length === 0) return null;
+              return (
+                <Box key={category} sx={{ mb: 1.5 }}>
+                  <Typography sx={{ color: '#666', fontSize: '0.7rem', mb: 0.5, fontWeight: 500 }}>
+                    {category}
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    {categoryTools.map(([toolId, toolDef]) => {
+                      const isSelected = selectedBuiltinTools.includes(toolId);
+                      const currentSettings = toolSettings[toolId] || {};
+                      return (
+                        <Box key={toolId}>
+                          <Box
+                            onClick={() => {
+                              const newValue = isSelected
+                                ? selectedBuiltinTools.filter((id) => id !== toolId)
+                                : [...selectedBuiltinTools, toolId];
+                              handleConfigChange(input.name, newValue);
+                            }}
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1,
+                              p: 0.75,
+                              borderRadius: 1,
+                              bgcolor: isSelected ? 'rgba(99, 102, 241, 0.15)' : '#252536',
+                              border: isSelected ? '1px solid #6366f1' : '1px solid #3d3d54',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s',
+                              '&:hover': {
+                                bgcolor: isSelected ? 'rgba(99, 102, 241, 0.2)' : '#2d2d44',
+                              },
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                width: 18,
+                                height: 18,
+                                borderRadius: '4px',
+                                border: isSelected ? 'none' : '2px solid #555',
+                                bgcolor: isSelected ? '#6366f1' : 'transparent',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}
+                            >
+                              {isSelected && (
+                                <CheckCircleOutlineIcon sx={{ fontSize: 14, color: '#fff' }} />
+                              )}
+                            </Box>
+                            <Typography sx={{ fontSize: '0.9rem' }}>{toolDef.icon}</Typography>
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography sx={{ color: '#fff', fontSize: '0.75rem', fontWeight: 500 }}>
+                                {toolDef.name}
+                              </Typography>
+                              <Typography sx={{ color: '#666', fontSize: '0.65rem' }}>
+                                {toolDef.description}
+                              </Typography>
+                            </Box>
+                          </Box>
+                          {/* 選択時に詳細設定を表示 */}
+                          {isSelected && toolDef.settings && toolDef.settings.length > 0 && (
+                            <Box
+                              sx={{
+                                ml: 3,
+                                mt: 0.5,
+                                p: 1,
+                                bgcolor: '#1a1a2e',
+                                borderRadius: 1,
+                                borderLeft: '2px solid #6366f1',
+                              }}
+                            >
+                              {toolDef.settings.map((setting) => (
+                                <Box key={setting.key} sx={{ mb: 1, '&:last-child': { mb: 0 } }}>
+                                  {setting.type === 'boolean' ? (
+                                    <FormControlLabel
+                                      control={
+                                        <Switch
+                                          size="small"
+                                          checked={currentSettings[setting.key] ?? setting.default ?? false}
+                                          onChange={(e) => handleToolSettingChange(toolId, setting.key, e.target.checked)}
+                                        />
+                                      }
+                                      label={
+                                        <Typography sx={{ fontSize: '0.7rem', color: '#aaa' }}>
+                                          {setting.label}
+                                        </Typography>
+                                      }
+                                    />
+                                  ) : (
+                                    <TextField
+                                      label={setting.label}
+                                      type={setting.type === 'number' ? 'number' : 'text'}
+                                      value={currentSettings[setting.key] ?? setting.default ?? ''}
+                                      onChange={(e) => handleToolSettingChange(
+                                        toolId,
+                                        setting.key,
+                                        setting.type === 'number' ? Number(e.target.value) : e.target.value
+                                      )}
+                                      placeholder={setting.placeholder}
+                                      size="small"
+                                      fullWidth
+                                      sx={{
+                                        '& .MuiOutlinedInput-root': {
+                                          fontSize: '0.75rem',
+                                          color: '#fff',
+                                          '& fieldset': { borderColor: '#3d3d54' },
+                                          '&:hover fieldset': { borderColor: '#4d4d64' },
+                                          '&.Mui-focused fieldset': { borderColor: '#6366f1' },
+                                        },
+                                        '& .MuiInputLabel-root': {
+                                          fontSize: '0.7rem',
+                                          color: '#888',
+                                        },
+                                      }}
+                                      InputProps={{
+                                        endAdornment: setting.description ? (
+                                          <InputAdornment position="end">
+                                            <Tooltip title={setting.description} arrow>
+                                              <HelpOutlineIcon sx={{ fontSize: 12, color: '#555' }} />
+                                            </Tooltip>
+                                          </InputAdornment>
+                                        ) : null,
+                                      }}
+                                    />
+                                  )}
+                                </Box>
+                              ))}
+                            </Box>
+                          )}
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                </Box>
+              );
+            })}
+            {selectedBuiltinTools.length > 0 && (
+              <Typography sx={{ color: '#6366f1', fontSize: '0.75rem', mt: 0.5 }}>
+                選択中: {selectedBuiltinTools.length}個のツール
+              </Typography>
+            )}
+          </Box>
+        );
+
+      case 'agentMultiSelect':
+        // OwlAgentを複数選択するためのUI（控えめなチップ形式）
+        const selectedAgents: string[] = Array.isArray(value) ? value : [];
+        return (
+          <Box key={input.name}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+              <Typography sx={{ color: '#666', fontSize: '0.7rem' }}>
+                {input.label}
+              </Typography>
+              {input.description && (
+                <Tooltip title={input.description} arrow>
+                  <HelpOutlineIcon sx={{ fontSize: 12, color: '#555' }} />
+                </Tooltip>
+              )}
+            </Box>
+            {savedOwlAgents.length === 0 ? (
+              <Typography sx={{ color: '#555', fontSize: '0.7rem', fontStyle: 'italic' }}>
+                保存されたOwlAgentがありません
+              </Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                {savedOwlAgents.map((agent) => {
+                  const isSelected = selectedAgents.includes(agent.id);
+                  return (
+                    <Tooltip key={agent.id} title={agent.description || agent.name} arrow>
+                      <Chip
+                        label={agent.name}
+                        size="small"
+                        onClick={() => {
+                          const newValue = isSelected
+                            ? selectedAgents.filter((id) => id !== agent.id)
+                            : [...selectedAgents, agent.id];
+                          handleConfigChange(input.name, newValue);
+                        }}
+                        sx={{
+                          bgcolor: isSelected ? '#607D8B' : '#252536',
+                          color: isSelected ? '#fff' : '#888',
+                          border: isSelected ? 'none' : '1px solid #3d3d54',
+                          cursor: 'pointer',
+                          fontSize: '0.7rem',
+                          height: 24,
+                          '&:hover': {
+                            bgcolor: isSelected ? '#546E7A' : '#3d3d54',
+                          },
+                        }}
+                      />
+                    </Tooltip>
+                  );
+                })}
+              </Box>
+            )}
+            {selectedAgents.length > 0 && (
+              <Typography sx={{ color: '#607D8B', fontSize: '0.7rem', mt: 0.5 }}>
+                選択中: {selectedAgents.length}個
+              </Typography>
+            )}
+          </Box>
+        );
+
       default:
         return (
           <Box key={input.name}>
@@ -750,6 +1127,26 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
               </Box>
             </AccordionDetails>
           </Accordion>
+        )}
+
+        {/* Function Calling設定（LLMノードのみ） */}
+        {isLLMNode && (
+          <FunctionCallingSection
+            enableTools={config.enableTools ?? false}
+            onEnableToolsChange={(enabled) => handleConfigChange('enableTools', enabled)}
+            builtinTools={config.builtinTools ?? []}
+            onBuiltinToolsChange={(tools) => handleConfigChange('builtinTools', tools)}
+            toolAgents={config.toolAgents ?? []}
+            onToolAgentsChange={(agents) => handleConfigChange('toolAgents', agents)}
+            toolChoice={config.toolChoice ?? 'auto'}
+            onToolChoiceChange={(choice) => handleConfigChange('toolChoice', choice)}
+            maxIterations={config.maxIterations ?? 5}
+            onMaxIterationsChange={(iterations) => handleConfigChange('maxIterations', iterations)}
+            toolSettings={config.toolSettings ?? {}}
+            onToolSettingsChange={(settings) => handleConfigChange('toolSettings', settings)}
+            savedOwlAgents={savedOwlAgents}
+            connectedTools={connectedTools}
+          />
         )}
 
         <Divider sx={{ borderColor: '#2d2d44', my: 2 }} />

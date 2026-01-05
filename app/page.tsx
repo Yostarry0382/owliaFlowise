@@ -1,58 +1,71 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect, Suspense, useMemo } from 'react';
 import ReactFlow, {
   Node,
   Edge,
   Controls,
   Background,
   MiniMap,
-  addEdge,
-  Connection,
   useNodesState,
   useEdgesState,
   ReactFlowProvider,
   ReactFlowInstance,
+  useReactFlow,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import {
   Box,
-  Paper,
-  Typography,
-  Button,
   IconButton,
   Tooltip,
   Snackbar,
   Alert,
+  Typography,
 } from '@mui/material';
-import SaveIcon from '@mui/icons-material/Save';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import ChatIcon from '@mui/icons-material/Chat';
-import FolderIcon from '@mui/icons-material/Folder';
-import StorefrontIcon from '@mui/icons-material/Storefront';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 
-import NodePalette from './agent-builder/components/NodePalette';
-import CustomNode, { CustomNodeData } from './agent-builder/components/CustomNode';
+// Components
+import EnhancedCustomNode, { EnhancedCustomNodeData } from './agent-builder/components/EnhancedCustomNode';
+import EnhancedNodePalette from './agent-builder/components/EnhancedNodePalette';
 import ButtonEdge from './agent-builder/components/ButtonEdge';
-import NodeConfigPanel from './agent-builder/components/NodeConfigPanel';
+import FloatingConfigPanel from './agent-builder/components/FloatingConfigPanel';
 import SaveAgentModal from './agent-builder/components/SaveAgentModal';
 import TestRunModal from './agent-builder/components/TestRunModal';
-import { getNodeDefinition } from './agent-builder/types/node-definitions';
-import { serializeFlowForFlowise } from './agent-builder/lib/flowise-converter';
-import { useRouter } from 'next/navigation';
+import NodeSearchBar from './agent-builder/components/NodeSearchBar';
+import ExecutionPreviewPanel from './agent-builder/components/ExecutionPreviewPanel';
+import VersionHistoryPanel from './agent-builder/components/VersionHistoryPanel';
+import OnboardingOverlay, { useOnboardingStatus } from './agent-builder/components/OnboardingOverlay';
+import KeyboardShortcutsHelp from './agent-builder/components/KeyboardShortcutsHelp';
+import FlowBuilderHeader from './components/FlowBuilderHeader';
 
-// 拡張されたノードデータ型（コールバック付き）
-interface ExtendedNodeData extends CustomNodeData {
+// Contexts and Stores
+import { ThemeProvider, useTheme } from './agent-builder/contexts/ThemeContext';
+
+// Types and Utils
+import { getNodeDefinition } from './agent-builder/types/node-definitions';
+
+// Hooks
+import { useNotification } from './hooks/useNotification';
+import { useOwlAgentManager } from './hooks/useOwlAgentManager';
+import { useFlowOperations, NodeData } from './hooks/useFlowOperations';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+
+// 拡張されたノードデータ型（NodeDataの制約を満たすように定義）
+interface ExtendedNodeData extends EnhancedCustomNodeData {
+  label: string;
+  type: string;
+  category: string;
   onConfigure?: (nodeId: string) => void;
   onDelete?: (nodeId: string) => void;
 }
 
-// カスタムノードタイプの登録（コンポーネント外で定義してメモ化警告を回避）
+// カスタムノードタイプの登録
 const nodeTypes = {
-  custom: CustomNode,
+  custom: EnhancedCustomNode,
 };
 
-// カスタムエッジタイプの登録（Flowise互換性のため）
+// カスタムエッジタイプの登録
 const edgeTypes = {
   buttonedge: ButtonEdge,
 };
@@ -61,80 +74,99 @@ const edgeTypes = {
 const initialNodes: Node<ExtendedNodeData>[] = [];
 const initialEdges: Edge[] = [];
 
-export default function Home() {
-  const router = useRouter();
+// メインコンテンツコンポーネント
+function HomeContent() {
+  const { colors } = useTheme();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const { setCenter } = useReactFlow();
+
+  // ReactFlow State
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const [selectedNode, setSelectedNode] = useState<Node<ExtendedNodeData> | null>(null);
-  const [showConfigPanel, setShowConfigPanel] = useState(false);
+
+  // UI State
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showTestModal, setShowTestModal] = useState(false);
-  const [savedOwlAgents, setSavedOwlAgents] = useState<{ id: string; name: string; description: string }[]>([]);
-  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({
-    open: false,
-    message: '',
-    severity: 'info',
+  const [showSearchBar, setShowSearchBar] = useState(false);
+  const [showExecutionPreview, setShowExecutionPreview] = useState(false);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  const [showPalette, setShowPalette] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  // Notification
+  const { snackbar, showError, closeSnackbar } = useNotification();
+
+  // OwlAgent Manager
+  const {
+    savedOwlAgents,
+    currentAgentName,
+    saveAgent,
+  } = useOwlAgentManager(nodes, edges, setNodes, setEdges);
+
+  // Flow Operations
+  const {
+    selectedNode,
+    floatingConfigPosition,
+    canUndo,
+    canRedo,
+    handleConfigureNode,
+    handleDeleteNode,
+    handleDeleteNodes,
+    handleSaveNodeConfig,
+    handleCloseConfigPanel,
+    onNodeDoubleClick,
+    onConnect,
+    saveToHistory,
+    handleUndo,
+    handleRedo,
+    handleRestoreFromHistory,
+  } = useFlowOperations<ExtendedNodeData>({
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    reactFlowInstance,
   });
 
-  // 保存済みOwlAgentを読み込み
+  // Onboarding
+  const { isCompleted: onboardingCompleted } = useOnboardingStatus();
+
   useEffect(() => {
-    const loadOwlAgents = async () => {
-      try {
-        const response = await fetch('/api/owlagents');
-        if (response.ok) {
-          const agents = await response.json();
-          setSavedOwlAgents(agents.map((a: any) => ({
-            id: a.id,
-            name: a.name,
-            description: a.description,
-          })));
-        }
-      } catch (error) {
-        console.error('Failed to load OwlAgents:', error);
+    if (!onboardingCompleted) {
+      setShowOnboarding(true);
+    }
+  }, [onboardingCompleted]);
+
+  // 保存モーダルを開く
+  const handleOpenSaveModal = useCallback(() => {
+    if (nodes.length === 0) {
+      showError(new Error('保存するノードがありません'), '保存する前に少なくとも1つのノードを追加してください');
+      return;
+    }
+    setShowSaveModal(true);
+  }, [nodes, showError]);
+
+  // エージェントを保存
+  const handleSaveAgent = useCallback(
+    async (agentData: { name: string; description: string; tags: string[]; iconStyle: string; syncToFlowise: boolean }) => {
+      const success = await saveAgent(agentData);
+      if (success) {
+        setShowSaveModal(false);
       }
-    };
-    loadOwlAgents();
-  }, []);
-
-  // ノード設定を開く（useRefで安定した参照を保持）
-  const handleConfigureNodeRef = useRef<(nodeId: string) => void>();
-  handleConfigureNodeRef.current = (nodeId: string) => {
-    const node = nodes.find((n) => n.id === nodeId);
-    if (node) {
-      setSelectedNode(node);
-      setShowConfigPanel(true);
-    }
-  };
-
-  // ノードを削除（useRefで安定した参照を保持）
-  const handleDeleteNodeRef = useRef<(nodeId: string) => void>();
-  handleDeleteNodeRef.current = (nodeId: string) => {
-    setNodes((nds) => nds.filter((n) => n.id !== nodeId));
-    setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
-    if (selectedNode?.id === nodeId) {
-      setSelectedNode(null);
-      setShowConfigPanel(false);
-    }
-  };
-
-  // 安定したコールバック
-  const handleConfigureNode = useCallback((nodeId: string) => {
-    handleConfigureNodeRef.current?.(nodeId);
-  }, []);
-
-  const handleDeleteNode = useCallback((nodeId: string) => {
-    handleDeleteNodeRef.current?.(nodeId);
-  }, []);
-
-  // エッジ接続
-  const onConnect = useCallback(
-    (params: Connection) => {
-      setEdges((eds) => addEdge({ ...params, type: 'smoothstep', animated: true }, eds));
     },
-    [setEdges]
+    [saveAgent]
   );
+
+  // テスト実行モーダルを開く
+  const handleTestRun = useCallback(() => {
+    if (nodes.length === 0) {
+      showError(new Error('テストするノードがありません'), 'テストする前に少なくとも1つのノードを追加してください');
+      return;
+    }
+    setShowTestModal(true);
+  }, [nodes, showError]);
 
   // ノードをドロップ
   const onDrop = useCallback(
@@ -149,6 +181,8 @@ export default function Home() {
         x: event.clientX,
         y: event.clientY,
       });
+
+      saveToHistory(`Add ${parsed.label}`);
 
       const newNode: Node<ExtendedNodeData> = {
         id: `${parsed.type}-${Date.now()}`,
@@ -168,7 +202,7 @@ export default function Home() {
 
       setNodes((nds) => [...nds, newNode]);
     },
-    [reactFlowInstance, setNodes, handleConfigureNode, handleDeleteNode]
+    [reactFlowInstance, setNodes, handleConfigureNode, handleDeleteNode, saveToHistory]
   );
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -176,257 +210,111 @@ export default function Home() {
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
-  // ノード選択（ダブルクリックで設定パネルを開く）
-  const onNodeClick = useCallback((_event: React.MouseEvent, node: Node<ExtendedNodeData>) => {
-    setSelectedNode(node);
-  }, []);
-
-  // ノードダブルクリックで設定パネルを開く
-  const onNodeDoubleClick = useCallback((_event: React.MouseEvent, node: Node<ExtendedNodeData>) => {
-    setSelectedNode(node);
-    setShowConfigPanel(true);
-  }, []);
-
-  // ノード設定を保存
-  const handleSaveNodeConfig = useCallback(
-    (nodeId: string, config: Record<string, any>, humanReview?: CustomNodeData['humanReview']) => {
-      setNodes((nds) =>
-        nds.map((n) =>
-          n.id === nodeId
-            ? { ...n, data: { ...n.data, config, humanReview } }
-            : n
-        )
-      );
-      // 選択ノードも更新
-      setSelectedNode((prev) =>
-        prev?.id === nodeId
-          ? { ...prev, data: { ...prev.data, config, humanReview } }
-          : prev
-      );
-    },
-    [setNodes]
-  );
-
-  // 設定パネルを閉じる
-  const handleCloseConfigPanel = useCallback(() => {
-    setShowConfigPanel(false);
-  }, []);
-
-  // 保存モーダルを開く
-  const handleOpenSaveModal = useCallback(() => {
-    if (nodes.length === 0) {
-      setSnackbar({
-        open: true,
-        message: 'Please add at least one node before saving.',
-        severity: 'error',
-      });
-      return;
-    }
-    setShowSaveModal(true);
-  }, [nodes]);
-
-  // エージェントを保存
-  const handleSaveAgent = useCallback(
-    async (agentData: { name: string; description: string; tags: string[]; iconStyle: string; syncToFlowise: boolean }) => {
-      try {
-        // Flowise同期が有効な場合、Flowise形式のフローデータも生成
-        let flowiseFlowData: string | undefined;
-        if (agentData.syncToFlowise) {
-          flowiseFlowData = serializeFlowForFlowise(nodes, edges);
-        }
-
-        const response = await fetch('/api/owlagents', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...agentData,
-            flow: {
-              nodes: nodes.map((n) => ({
-                id: n.id,
-                type: n.data.type,
-                position: n.position,
-                data: {
-                  label: n.data.label,
-                  type: n.data.type,
-                  category: n.data.category,
-                  config: n.data.config,
-                  humanReview: n.data.humanReview,
-                  agentId: n.data.agentId,
-                  agentName: n.data.agentName,
-                },
-              })),
-              edges: edges.map((e) => ({
-                id: e.id,
-                source: e.source,
-                target: e.target,
-                sourceHandle: e.sourceHandle,
-                targetHandle: e.targetHandle,
-              })),
-            },
-            flowiseFlowData, // Flowise形式のフローデータを追加
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to save agent');
-        }
-
-        const savedAgent = await response.json();
-
-        let message = `Agent "${savedAgent.name}" saved successfully!`;
-        if (savedAgent.flowiseChatflowId) {
-          message += ` (Flowise Chatflow: ${savedAgent.flowiseChatflowId})`;
-        }
-
-        setSnackbar({
-          open: true,
-          message,
-          severity: 'success',
-        });
-        setShowSaveModal(false);
-
-        // OwlAgentリストを更新
-        setSavedOwlAgents((prev) => [
-          ...prev,
-          { id: savedAgent.id, name: savedAgent.name, description: savedAgent.description },
-        ]);
-      } catch (error) {
-        setSnackbar({
-          open: true,
-          message: 'Failed to save agent. Please try again.',
-          severity: 'error',
-        });
+  // ノード検索でノードを選択
+  const handleSelectNode = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (node && reactFlowInstance) {
+        setCenter(node.position.x + 100, node.position.y + 50, { zoom: 1, duration: 500 });
+        setNodes((nds) =>
+          nds.map((n) => ({
+            ...n,
+            selected: n.id === nodeId,
+          }))
+        );
       }
     },
-    [nodes, edges]
+    [nodes, reactFlowInstance, setCenter, setNodes]
   );
 
-  // テスト実行モーダルを開く
-  const handleTestRun = useCallback(() => {
-    if (nodes.length === 0) {
-      setSnackbar({
-        open: true,
-        message: 'Please add at least one node before testing.',
-        severity: 'error',
-      });
-      return;
-    }
-    setShowTestModal(true);
-  }, [nodes]);
+  // キーボードショートカットハンドラー
+  const keyboardHandlers = useMemo(
+    () => ({
+      onSave: handleOpenSaveModal,
+      onUndo: handleUndo,
+      onRedo: handleRedo,
+      onSearch: () => setShowSearchBar(true),
+      onExecutionPreview: () => setShowExecutionPreview((prev) => !prev),
+      onVersionHistory: () => setShowVersionHistory((prev) => !prev),
+      onTogglePalette: () => setShowPalette((prev) => !prev),
+      onTestRun: handleTestRun,
+      onShowShortcutsHelp: () => setShowShortcutsHelp((prev) => !prev),
+      onEscape: () => {
+        setShowSearchBar(false);
+        setShowShortcutsHelp(false);
+        handleCloseConfigPanel();
+      },
+      onDeleteSelected: handleDeleteNodes,
+    }),
+    [handleOpenSaveModal, handleUndo, handleRedo, handleTestRun, handleCloseConfigPanel, handleDeleteNodes]
+  );
 
-  // スナックバーを閉じる
-  const handleCloseSnackbar = () => {
-    setSnackbar((prev) => ({ ...prev, open: false }));
-  };
+  // キーボードショートカット
+  useKeyboardShortcuts({
+    handlers: keyboardHandlers,
+    nodes,
+    enabled: true,
+  });
 
   return (
-    <ReactFlowProvider>
-      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', bgcolor: '#0f0f1a' }}>
-        {/* ヘッダー */}
-        <Paper
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', bgcolor: colors.bg.primary }}>
+      {/* ヘッダー */}
+      <FlowBuilderHeader
+        currentAgentName={currentAgentName}
+        canUndo={canUndo()}
+        canRedo={canRedo()}
+        showExecutionPreview={showExecutionPreview}
+        showVersionHistory={showVersionHistory}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onSearch={() => setShowSearchBar(true)}
+        onToggleExecutionPreview={() => setShowExecutionPreview(!showExecutionPreview)}
+        onToggleVersionHistory={() => setShowVersionHistory(!showVersionHistory)}
+        onShowShortcutsHelp={() => setShowShortcutsHelp(true)}
+        onShowOnboarding={() => setShowOnboarding(true)}
+        onTestRun={handleTestRun}
+        onSave={handleOpenSaveModal}
+      />
+
+      {/* メインコンテンツ */}
+      <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* 左サイドバー: ノードパレット */}
+        <Box
           sx={{
-            borderRadius: 0,
-            bgcolor: '#16213e',
-            borderBottom: '2px solid #0f3460',
-            px: 2,
-            py: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
+            width: showPalette ? 280 : 0,
+            minWidth: showPalette ? 250 : 0,
+            maxWidth: showPalette ? 400 : 0,
+            transition: 'all 0.3s ease',
+            overflow: 'hidden',
+            flexShrink: 0,
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Typography
-              variant="h6"
-              sx={{
-                fontWeight: 700,
-                color: '#e94560',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-              }}
-            >
-              <span style={{ fontSize: '1.3rem' }}>🦉</span>
-              OwliaFabrica
-            </Typography>
-            <Typography
-              sx={{
-                fontSize: '0.9rem',
-                color: '#888',
-                borderLeft: '1px solid #444',
-                pl: 2,
-              }}
-            >
-              Agent Builder
-            </Typography>
-          </Box>
+          <EnhancedNodePalette savedOwlAgents={savedOwlAgents} isVisible={showPalette} />
+        </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Button
-              variant="outlined"
-              startIcon={<PlayArrowIcon />}
-              onClick={handleTestRun}
-              sx={{
-                color: '#4CAF50',
-                borderColor: '#4CAF50',
-                '&:hover': {
-                  borderColor: '#66BB6A',
-                  bgcolor: 'rgba(76, 175, 80, 0.1)',
-                },
-              }}
-            >
-              Test Run
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<SaveIcon />}
-              onClick={handleOpenSaveModal}
-              sx={{
-                bgcolor: '#6366f1',
-                '&:hover': { bgcolor: '#5558e3' },
-              }}
-            >
-              Save Agent
-            </Button>
-            <Tooltip title="Saved Agents">
+        {/* 中央: キャンバス */}
+        <Box sx={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+          <Box ref={reactFlowWrapper} sx={{ flex: 1, position: 'relative', height: '100%' }}>
+            {/* パレット表示トグル */}
+            <Tooltip title={showPalette ? 'Hide Palette (Ctrl+P)' : 'Show Palette (Ctrl+P)'}>
               <IconButton
-                onClick={() => router.push('/agent-canvas')}
-                sx={{ color: '#90CAF9' }}
+                onClick={() => setShowPalette(!showPalette)}
+                sx={{
+                  position: 'absolute',
+                  left: 8,
+                  top: 8,
+                  zIndex: 10,
+                  bgcolor: colors.bg.secondary,
+                  border: `1px solid ${colors.border.primary}`,
+                  color: colors.text.secondary,
+                  '&:hover': { bgcolor: colors.bg.hover },
+                }}
+                aria-label={showPalette ? 'パレットを隠す' : 'パレットを表示'}
               >
-                <FolderIcon />
+                {showPalette ? <ChevronLeftIcon /> : <ChevronRightIcon />}
               </IconButton>
             </Tooltip>
-            <Tooltip title="Agent Store">
-              <IconButton
-                onClick={() => router.push('/store')}
-                sx={{ color: '#e94560' }}
-              >
-                <StorefrontIcon />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Go to Chat">
-              <IconButton
-                onClick={() => router.push('/chat')}
-                sx={{ color: '#90CAF9' }}
-              >
-                <ChatIcon />
-              </IconButton>
-            </Tooltip>
-          </Box>
-        </Paper>
 
-        {/* メインコンテンツ */}
-        <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-          {/* 左サイドバー: ノードパレット */}
-          <NodePalette
-            savedOwlAgents={savedOwlAgents}
-          />
-
-          {/* 中央: キャンバス */}
-          <Box
-            ref={reactFlowWrapper}
-            sx={{ flex: 1, position: 'relative' }}
-          >
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -436,7 +324,6 @@ export default function Home() {
               onInit={setReactFlowInstance}
               onDrop={onDrop}
               onDragOver={onDragOver}
-              onNodeClick={onNodeClick}
               onNodeDoubleClick={onNodeDoubleClick}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
@@ -446,22 +333,23 @@ export default function Home() {
               defaultEdgeOptions={{
                 type: 'smoothstep',
                 animated: true,
-                style: { stroke: '#6366f1', strokeWidth: 2 },
+                style: { stroke: colors.accent, strokeWidth: 2 },
               }}
-              style={{ background: '#0f0f1a' }}
+              style={{ background: colors.bg.primary }}
             >
               <Controls />
               <MiniMap
                 style={{
-                  backgroundColor: '#1e1e2f',
-                  border: '1px solid #2d2d44',
+                  backgroundColor: colors.bg.secondary,
+                  border: `1px solid ${colors.border.primary}`,
                 }}
                 nodeColor={(node) => {
                   const def = getNodeDefinition(node.data?.type);
                   return def?.color || '#607D8B';
                 }}
+                maskColor={`${colors.bg.primary}80`}
               />
-              <Background color="#2d2d44" gap={20} size={1} />
+              <Background color={colors.border.primary} gap={20} size={1} />
             </ReactFlow>
 
             {/* 空の状態の案内 */}
@@ -476,59 +364,120 @@ export default function Home() {
                   pointerEvents: 'none',
                 }}
               >
-                <Typography sx={{ color: '#666', fontSize: '1.2rem', mb: 1 }}>
+                <Typography sx={{ fontSize: '2rem', mb: 2 }}>🦉</Typography>
+                <Typography sx={{ color: colors.text.secondary, fontSize: '1.2rem', mb: 1 }}>
                   Drag nodes from the palette to get started
                 </Typography>
-                <Typography sx={{ color: '#444', fontSize: '0.9rem' }}>
+                <Typography sx={{ color: colors.text.tertiary, fontSize: '0.9rem' }}>
                   Connect nodes to build your AI agent workflow
                 </Typography>
               </Box>
             )}
-          </Box>
 
-          {/* 右サイドバー: ノード設定パネル */}
-          {showConfigPanel && selectedNode && (
-            <NodeConfigPanel
-              nodeId={selectedNode.id}
-              nodeData={selectedNode.data}
-              onClose={handleCloseConfigPanel}
-              onSave={handleSaveNodeConfig}
-              savedOwlAgents={savedOwlAgents}
+            {/* ノード検索バー */}
+            <NodeSearchBar
+              nodes={nodes}
+              onSelectNode={handleSelectNode}
+              onClose={() => setShowSearchBar(false)}
+              isOpen={showSearchBar}
             />
-          )}
+
+            {/* 実行プレビューパネル */}
+            {showExecutionPreview && (
+              <ExecutionPreviewPanel
+                nodes={nodes}
+                edges={edges}
+                onClose={() => setShowExecutionPreview(false)}
+              />
+            )}
+
+            {/* バージョン履歴パネル */}
+            {showVersionHistory && (
+              <VersionHistoryPanel
+                onRestore={handleRestoreFromHistory}
+                onClose={() => setShowVersionHistory(false)}
+              />
+            )}
+          </Box>
         </Box>
 
-        {/* 保存モーダル */}
-        <SaveAgentModal
-          open={showSaveModal}
-          onClose={() => setShowSaveModal(false)}
-          onSave={handleSaveAgent}
-        />
-
-        {/* テスト実行モーダル */}
-        <TestRunModal
-          open={showTestModal}
-          onClose={() => setShowTestModal(false)}
-          nodes={nodes}
-          edges={edges}
-        />
-
-        {/* スナックバー */}
-        <Snackbar
-          open={snackbar.open}
-          autoHideDuration={4000}
-          onClose={handleCloseSnackbar}
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        >
-          <Alert
-            onClose={handleCloseSnackbar}
-            severity={snackbar.severity}
-            sx={{ width: '100%' }}
-          >
-            {snackbar.message}
-          </Alert>
-        </Snackbar>
+        {/* フローティング設定パネル */}
+        {floatingConfigPosition && selectedNode && (
+          <FloatingConfigPanel
+            nodeId={selectedNode.id}
+            nodeData={selectedNode.data}
+            position={floatingConfigPosition}
+            onClose={handleCloseConfigPanel}
+            onSave={handleSaveNodeConfig}
+            savedOwlAgents={savedOwlAgents}
+          />
+        )}
       </Box>
-    </ReactFlowProvider>
+
+      {/* モーダル */}
+      <SaveAgentModal
+        open={showSaveModal}
+        onClose={() => setShowSaveModal(false)}
+        onSave={handleSaveAgent}
+      />
+
+      <TestRunModal
+        open={showTestModal}
+        onClose={() => setShowTestModal(false)}
+        nodes={nodes}
+        edges={edges}
+      />
+
+      {/* キーボードショートカットヘルプ */}
+      {showShortcutsHelp && <KeyboardShortcutsHelp onClose={() => setShowShortcutsHelp(false)} />}
+
+      {/* オンボーディング */}
+      {showOnboarding && (
+        <OnboardingOverlay
+          onComplete={() => setShowOnboarding(false)}
+          onSkip={() => setShowOnboarding(false)}
+        />
+      )}
+
+      {/* スナックバー */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={closeSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={closeSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
+  );
+}
+
+// メインエクスポート（プロバイダーでラップ）
+export default function Home() {
+  return (
+    <ThemeProvider>
+      <ReactFlowProvider>
+        <Suspense
+          fallback={
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                height: '100vh',
+                backgroundColor: '#0f0f1a',
+                color: '#fff',
+              }}
+            >
+              Loading...
+            </div>
+          }
+        >
+          <HomeContent />
+        </Suspense>
+      </ReactFlowProvider>
+    </ThemeProvider>
   );
 }

@@ -62,7 +62,7 @@ export default function OwlAgentCard({ agent }: OwlAgentCardProps) {
 
   const handleCardClick = () => {
     // Navigate to agent detail or edit page
-    router.push(`/agent-canvas/${agent.id}`);
+    router.push(`/agent-builder?id=${agent.id}`);
   };
 
   const handleLikeClick = (e: React.MouseEvent) => {

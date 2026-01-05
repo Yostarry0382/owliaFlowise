@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { executeFlow, processReviewDecision } from '@/app/lib/native-execution-engine';
+import { executeFlow, executeFlowFromNode } from '@/app/lib/native-execution-engine';
 import { FlowNode, FlowEdge } from '@/app/types/flowise';
 
 export async function POST(request: NextRequest) {
@@ -14,27 +14,40 @@ export async function POST(request: NextRequest) {
       // Human Reviewアクション用
       action,
       reviewNodeId,
-      decision,
-      editedOutput,
+      reviewDecision,
+      previousOutputs,
+      previousNodeExecutionLogs,
     } = body;
 
-    // Human Review決定の処理
-    if (action === 'review') {
-      if (!reviewNodeId || !decision) {
+    // Human Review後の継続処理
+    if (action === 'continue-after-review') {
+      if (!reviewNodeId || !reviewDecision) {
         return NextResponse.json(
           { error: 'Review node ID and decision are required' },
           { status: 400 }
         );
       }
 
-      const result = await processReviewDecision(
+      console.log('[API] Continuing after Human Review');
+      console.log('[API] Review node:', reviewNodeId);
+      console.log('[API] Decision:', reviewDecision);
+
+      // 承認/編集された出力を使用してフローを継続
+      const editedOutput = reviewDecision.status === 'edited'
+        ? reviewDecision.editedOutput
+        : previousOutputs?.[reviewNodeId];
+
+      const result = await executeFlowFromNode(
         nodes as FlowNode[],
         edges as FlowEdge[],
         reviewNodeId,
-        decision,
-        editedOutput
+        editedOutput,
+        previousOutputs || {},
+        sessionId,
+        previousNodeExecutionLogs || []
       );
 
+      console.log('[API] Continue result:', JSON.stringify(result, null, 2));
       return NextResponse.json(result);
     }
 

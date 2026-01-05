@@ -319,6 +319,19 @@ export interface OwlAgentWithFlowise extends OwlAgent {
 // Execution Types
 // ============================================
 
+// ノード実行ログ（入出力を記録）
+export interface NodeExecutionLog {
+  nodeId: string;
+  nodeName: string;
+  nodeType: string;
+  inputs: Record<string, any>;
+  output: any;
+  executionTime: number;
+  status: 'success' | 'error' | 'pending_review' | 'skipped';
+  error?: string;
+  timestamp: number;
+}
+
 export interface ExecutionResult {
   success: boolean;
   output: any;
@@ -331,7 +344,12 @@ export interface ExecutionResult {
     output: any;
     message: string;
     allowEdit: boolean;
+    timeoutSeconds?: number;
   };
+  // Human Review継続用：実行途中のノード出力を保持
+  nodeOutputs?: Record<string, any>;
+  // ノード実行ログ（入出力の可視化用）
+  nodeExecutionLogs?: NodeExecutionLog[];
 }
 
 export interface ExecutionContext {
