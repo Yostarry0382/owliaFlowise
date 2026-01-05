@@ -1,0 +1,179 @@
+{
+  "id": "meeting-minutes-assistant",
+  "name": "議事録作成アシスタント",
+  "description": "会議の音声文字起こしや要点から、構造化された議事録を自動生成します。参加者、議題、決定事項、アクションアイテムを整理して出力します。",
+  "iconStyle": "blue",
+  "version": "1.0.0",
+  "flow": {
+    "nodes": [
+      {
+        "id": "start-meeting",
+        "type": "start",
+        "position": {
+          "x": 0,
+          "y": 150
+        },
+        "data": {
+          "label": "会議情報入力",
+          "type": "start",
+          "category": "flowControl",
+          "config": {
+            "inputFields": [
+              "meetingTitle",
+              "participants",
+              "rawNotes"
+            ]
+          }
+        }
+      },
+      {
+        "id": "memory-context",
+        "type": "memory",
+        "position": {
+          "x": 195,
+          "y": -15
+        },
+        "data": {
+          "label": "会議テンプレート記憶",
+          "type": "memory",
+          "category": "memory",
+          "config": {
+            "memoryType": "buffer",
+            "template": "議事録テンプレート"
+          }
+        }
+      },
+      {
+        "id": "llm-extraction",
+        "type": "azureChatOpenAI",
+        "position": {
+          "x": 375,
+          "y": 135
+        },
+        "data": {
+          "label": "情報抽出・構造化",
+          "type": "azureChatOpenAI",
+          "category": "chatModels",
+          "config": {
+            "systemMessage": "あなたは議事録作成の専門家です。与えられた会議のメモや文字起こしから、以下の情報を抽出して構造化してください：\n1. 会議の基本情報（日時、場所、参加者）\n2. 議題と各議題の議論内容\n3. 決定事項\n4. アクションアイテム（担当者、期限）\n5. 次回会議の予定",
+            "temperature": 0.3
+          }
+        }
+      },
+      {
+        "id": "human-review",
+        "type": "humanReview",
+        "position": {
+          "x": 615,
+          "y": -15
+        },
+        "data": {
+          "label": "人間確認",
+          "type": "humanReview",
+          "category": "flowControl",
+          "config": {
+            "enabled": true,
+            "message": "議事録の内容を確認してください"
+          },
+          "humanReview": {
+            "enabled": true,
+            "requiresApproval": true,
+            "approvalMessage": "議事録の内容を確認し、必要に応じて修正してください",
+            "allowEdit": true
+          }
+        }
+      },
+      {
+        "id": "llm-formatting",
+        "type": "azureChatOpenAI",
+        "position": {
+          "x": 705,
+          "y": 135
+        },
+        "data": {
+          "label": "議事録フォーマット生成",
+          "type": "azureChatOpenAI",
+          "category": "chatModels",
+          "config": {
+            "systemMessage": "抽出された情報を使って、正式な議事録フォーマットで出力してください。Markdown形式で、見やすく整理された形式にしてください。",
+            "temperature": 0.2
+          }
+        }
+      },
+      {
+        "id": "end-meeting",
+        "type": "end",
+        "position": {
+          "x": 1000,
+          "y": 150
+        },
+        "data": {
+          "label": "議事録出力",
+          "type": "end",
+          "category": "flowControl",
+          "config": {}
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-start-memory",
+        "source": "start-meeting",
+        "target": "memory-context",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-start-llm",
+        "source": "start-meeting",
+        "target": "llm-extraction",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-memory-llm",
+        "source": "memory-context",
+        "target": "llm-extraction",
+        "sourceHandle": "output",
+        "targetHandle": "context"
+      },
+      {
+        "id": "edge-llm-review",
+        "source": "llm-extraction",
+        "target": "human-review",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-review-format",
+        "source": "human-review",
+        "target": "llm-formatting",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-format-end",
+        "source": "llm-formatting",
+        "target": "end-meeting",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "reactflow__edge-llm-extractionoutput-llm-formattinginput",
+        "source": "llm-extraction",
+        "target": "llm-formatting",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      }
+    ]
+  },
+  "tags": [
+    "業務効率化",
+    "議事録",
+    "会議",
+    "自動化",
+    "文書作成"
+  ],
+  "createdAt": "2025-12-22T10:00:00.000Z",
+  "updatedAt": "2025-12-22T06:28:27.499Z"
+}

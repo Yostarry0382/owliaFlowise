@@ -1,0 +1,228 @@
+{
+  "id": "customer-support-assistant",
+  "name": "顧客問い合わせ対応",
+  "description": "FAQデータベースとRAGを活用して顧客からの問い合わせに対応します。過去の対応履歴も参照し、一貫性のある適切な回答を生成します。",
+  "iconStyle": "orange",
+  "version": "1.0.0",
+  "flow": {
+    "nodes": [
+      {
+        "id": "start-support",
+        "type": "start",
+        "position": { "x": 0, "y": 200 },
+        "data": {
+          "label": "問い合わせ受付",
+          "type": "start",
+          "category": "flowControl",
+          "config": {
+            "inputFields": ["customerName", "inquiry", "previousTickets", "productInfo"]
+          }
+        }
+      },
+      {
+        "id": "vectorstore-faq",
+        "type": "custom",
+        "position": { "x": 200, "y": 80 },
+        "data": {
+          "label": "FAQ検索",
+          "type": "vectorstore",
+          "category": "vectorstore",
+          "config": {
+            "provider": "pinecone",
+            "indexName": "faq-database",
+            "topK": 5
+          }
+        }
+      },
+      {
+        "id": "vectorstore-history",
+        "type": "custom",
+        "position": { "x": 200, "y": 320 },
+        "data": {
+          "label": "対応履歴検索",
+          "type": "vectorstore",
+          "category": "vectorstore",
+          "config": {
+            "provider": "pinecone",
+            "indexName": "support-history",
+            "topK": 3
+          }
+        }
+      },
+      {
+        "id": "llm-classify",
+        "type": "azureChatOpenAI",
+        "position": { "x": 400, "y": 200 },
+        "data": {
+          "label": "問い合わせ分類",
+          "type": "azureChatOpenAI",
+          "category": "chatModels",
+          "config": {
+            "systemMessage": "顧客からの問い合わせを分析し、以下を判定してください：\n1. カテゴリ（技術サポート/請求/一般質問/苦情/機能要望）\n2. 緊急度（高/中/低）\n3. 自動回答可能か、人間対応が必要か\n4. 関連する製品/サービス",
+            "temperature": 0.2
+          }
+        }
+      },
+      {
+        "id": "llm-response",
+        "type": "azureChatOpenAI",
+        "position": { "x": 600, "y": 200 },
+        "data": {
+          "label": "回答案作成",
+          "type": "azureChatOpenAI",
+          "category": "chatModels",
+          "config": {
+            "systemMessage": "FAQと過去の対応履歴を参考に、顧客への回答を作成してください：\n- 丁寧で親しみやすい文体\n- 問題の解決方法を具体的に説明\n- 不明点があれば確認事項をリストアップ\n- 必要に応じてエスカレーション先を提案",
+            "temperature": 0.4
+          }
+        }
+      },
+      {
+        "id": "human-review",
+        "type": "custom",
+        "position": { "x": 800, "y": 80 },
+        "data": {
+          "label": "回答確認・承認",
+          "type": "humanReview",
+          "category": "flowControl",
+          "config": {
+            "enabled": true,
+            "message": "回答内容を確認してください"
+          },
+          "humanReview": {
+            "enabled": true,
+            "requiresApproval": true,
+            "approvalMessage": "回答の正確性と適切性を確認してください。必要に応じて修正できます。",
+            "allowEdit": true,
+            "timeoutSeconds": 1800
+          }
+        }
+      },
+      {
+        "id": "llm-followup",
+        "type": "azureChatOpenAI",
+        "position": { "x": 1000, "y": 200 },
+        "data": {
+          "label": "フォローアップ生成",
+          "type": "azureChatOpenAI",
+          "category": "chatModels",
+          "config": {
+            "systemMessage": "回答送信後のフォローアップアクションを提案してください：\n1. 解決確認のタイミング\n2. 追加サポートが必要な場合の案内\n3. 関連する情報やヘルプ記事の案内\n4. 顧客満足度調査の送信タイミング",
+            "temperature": 0.3
+          }
+        }
+      },
+      {
+        "id": "tool-ticket",
+        "type": "custom",
+        "position": { "x": 1000, "y": 350 },
+        "data": {
+          "label": "チケット更新",
+          "type": "tool",
+          "category": "tools",
+          "config": {
+            "toolType": "api",
+            "apiEndpoint": "/api/tickets/update",
+            "method": "POST"
+          }
+        }
+      },
+      {
+        "id": "end-support",
+        "type": "end",
+        "position": { "x": 1200, "y": 200 },
+        "data": {
+          "label": "対応完了",
+          "type": "end",
+          "category": "flowControl",
+          "config": {
+            "outputFields": ["response", "ticketStatus", "followUpActions"]
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-start-faq",
+        "source": "start-support",
+        "target": "vectorstore-faq",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-start-history",
+        "source": "start-support",
+        "target": "vectorstore-history",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-start-classify",
+        "source": "start-support",
+        "target": "llm-classify",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-faq-response",
+        "source": "vectorstore-faq",
+        "target": "llm-response",
+        "sourceHandle": "output",
+        "targetHandle": "faq"
+      },
+      {
+        "id": "edge-history-response",
+        "source": "vectorstore-history",
+        "target": "llm-response",
+        "sourceHandle": "output",
+        "targetHandle": "history"
+      },
+      {
+        "id": "edge-classify-response",
+        "source": "llm-classify",
+        "target": "llm-response",
+        "sourceHandle": "output",
+        "targetHandle": "classification"
+      },
+      {
+        "id": "edge-response-review",
+        "source": "llm-response",
+        "target": "human-review",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-review-followup",
+        "source": "human-review",
+        "target": "llm-followup",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-review-ticket",
+        "source": "human-review",
+        "target": "tool-ticket",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-followup-end",
+        "source": "llm-followup",
+        "target": "end-support",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-ticket-end",
+        "source": "tool-ticket",
+        "target": "end-support",
+        "sourceHandle": "output",
+        "targetHandle": "ticket"
+      }
+    ],
+    "viewport": { "x": 50, "y": 150, "zoom": 0.75 }
+  },
+  "tags": ["業務効率化", "カスタマーサポート", "FAQ", "RAG", "自動化", "顧客対応"],
+  "createdAt": "2025-12-22T10:00:00.000Z",
+  "updatedAt": "2025-12-22T10:00:00.000Z"
+}

@@ -1,0 +1,245 @@
+{
+  "id": "batch-text-processor",
+  "name": "バッチテキスト処理エージェント",
+  "description": "複数のテキストを一括で処理するエージェント。Loopノードを使用して、配列内の各テキストに対して処理（要約、感情分析、キーワード抽出など）を順次実行します。ローカル実行（Flowise不要）とAI実行（Flowise経由）の両方に対応。",
+  "iconStyle": "purple",
+  "version": "1.0.0",
+  "flow": {
+    "nodes": [
+      {
+        "id": "start-batch",
+        "type": "start",
+        "position": {
+          "x": -150,
+          "y": 210
+        },
+        "data": {
+          "label": "テキスト配列入力",
+          "type": "start",
+          "category": "flowControl",
+          "config": {
+            "inputLabel": "texts",
+            "inputPlaceholder": "処理するテキストの配列をJSON形式で入力（例: [\"テキスト1\", \"テキスト2\", \"テキスト3\"]）",
+            "inputType": "textarea"
+          }
+        }
+      },
+      {
+        "id": "parse-input",
+        "type": "customTool",
+        "position": {
+          "x": 195,
+          "y": 210
+        },
+        "data": {
+          "label": "入力パース",
+          "type": "customTool",
+          "category": "tools",
+          "config": {
+            "toolName": "parseTextArray",
+            "toolDescription": "入力テキストをJSON配列にパースします",
+            "jsCode": "try { const parsed = typeof input === 'string' ? JSON.parse(input) : input; return Array.isArray(parsed) ? parsed : [parsed]; } catch(e) { return input.split('\\n').filter(line => line.trim()); }"
+          }
+        }
+      },
+      {
+        "id": "loop-texts",
+        "type": "loop",
+        "position": {
+          "x": 500,
+          "y": 200
+        },
+        "data": {
+          "label": "テキストループ",
+          "type": "loop",
+          "category": "flowControl",
+          "config": {
+            "maxIterations": 100,
+            "itemVariable": "currentText",
+            "indexVariable": "textIndex"
+          }
+        }
+      },
+      {
+        "id": "local-process",
+        "type": "customTool",
+        "position": {
+          "x": 750,
+          "y": 0
+        },
+        "data": {
+          "label": "ローカルテキスト処理",
+          "type": "customTool",
+          "category": "tools",
+          "config": {
+            "toolName": "localTextProcessor",
+            "toolDescription": "Flowise不要のローカルテキスト処理。統計情報、感情分析、キーワード抽出、要約を実行",
+            "jsCode": "const text = typeof input === 'string' ? input : JSON.stringify(input);\n\n// 基本統計\nconst charCount = text.length;\nconst charCountNoSpaces = text.replace(/\\s/g, '').length;\nconst words = text.match(/[a-zA-Z]+/g) || [];\nconst jpChars = text.match(/[\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FAF]/g) || [];\nconst wordCount = words.length + Math.ceil(jpChars.length / 2);\nconst sentences = text.split(/[。.!?！？]+/).filter(s => s.trim().length > 0);\nconst sentenceCount = sentences.length || 1;\n\n// 感情分析\nconst posWords = ['良い','素晴らしい','最高','幸せ','楽しい','嬉しい','好き','感謝','成功','good','great','excellent','happy','love','best'];\nconst negWords = ['悪い','最悪','嫌い','悲しい','辛い','失敗','問題','不安','bad','terrible','hate','sad','fail','problem'];\nlet posCount = 0, negCount = 0;\nconst posFound = [], negFound = [];\nconst lowerText = text.toLowerCase();\nposWords.forEach(w => { if(text.includes(w) || lowerText.includes(w)) { posCount++; posFound.push(w); }});\nnegWords.forEach(w => { if(text.includes(w) || lowerText.includes(w)) { negCount++; negFound.push(w); }});\nconst total = posCount + negCount;\nconst score = total === 0 ? 0 : (posCount - negCount) / total;\nconst sentiment = score > 0.2 ? 'positive' : score < -0.2 ? 'negative' : 'neutral';\n\n// キーワード抽出\nconst stopWords = new Set(['the','a','an','and','or','in','on','at','to','for','of','is','was','are','の','に','は','を','た','が','で','て','と']);\nconst allWords = [...(text.match(/[a-zA-Z]{3,}/g)||[]).map(w=>w.toLowerCase()), ...(text.match(/[\\u4E00-\\u9FAF]{2,}/g)||[]), ...(text.match(/[\\u30A0-\\u30FF]{2,}/g)||[])];\nconst freq = {};\nallWords.filter(w => !stopWords.has(w)).forEach(w => { freq[w] = (freq[w]||0) + 1; });\nconst keywords = Object.entries(freq).map(([word,f]) => ({word, frequency: f})).sort((a,b) => b.frequency - a.frequency).slice(0,5);\n\n// 要約（上位3文を抽出）\nconst topSentences = sentences.slice(0, 3).join('。') + (sentences.length > 0 ? '。' : '');\n\nreturn {\n  statistics: { charCount, charCountNoSpaces, wordCount, sentenceCount },\n  sentiment: { sentiment, score: Math.round(score*100)/100, positiveKeywords: [...new Set(posFound)].slice(0,3), negativeKeywords: [...new Set(negFound)].slice(0,3) },\n  keywords: keywords.map(k => k.word),\n  summary: topSentences.substring(0, 200) + (topSentences.length > 200 ? '...' : ''),\n  originalLength: charCount\n};"
+          }
+        }
+      },
+      {
+        "id": "llm-process",
+        "type": "azureChatOpenAI",
+        "position": {
+          "x": 750,
+          "y": 200
+        },
+        "data": {
+          "label": "AI処理（Flowise経由）",
+          "type": "azureChatOpenAI",
+          "category": "chatModels",
+          "config": {
+            "modelName": "gpt-4o",
+            "systemMessage": "あなたは多言語対応のテキスト処理アシスタントです。与えられたテキストに対して以下の処理を行ってください：\n\n1. **要約**: テキストの要点を2-3文で簡潔にまとめる\n2. **キーポイント抽出**: 重要なポイントを箇条書きで3つまで\n3. **感情分析**: ポジティブ/ニュートラル/ネガティブの判定\n\n出力はJSON形式で以下のように返してください：\n{\n  \"summary\": \"要約文\",\n  \"keyPoints\": [\"ポイント1\", \"ポイント2\", \"ポイント3\"],\n  \"sentiment\": \"positive/neutral/negative\",\n  \"originalLength\": 元のテキストの文字数\n}",
+            "temperature": 0.3,
+            "maxTokens": 1000
+          }
+        }
+      },
+      {
+        "id": "collect-results",
+        "type": "customTool",
+        "position": {
+          "x": 1050,
+          "y": 90
+        },
+        "data": {
+          "label": "結果収集",
+          "type": "customTool",
+          "category": "tools",
+          "config": {
+            "toolName": "collectResult",
+            "toolDescription": "各イテレーションの結果を収集します",
+            "jsCode": "const result = { index: context.textIndex, input: context.currentText, output: input }; return result;"
+          }
+        }
+      },
+      {
+        "id": "aggregate-results",
+        "type": "customTool",
+        "position": {
+          "x": 500,
+          "y": 400
+        },
+        "data": {
+          "label": "結果集約",
+          "type": "customTool",
+          "category": "tools",
+          "config": {
+            "toolName": "aggregateResults",
+            "toolDescription": "すべての処理結果を集約してレポートを作成します",
+            "jsCode": "const results = Array.isArray(input) ? input : [input]; const stats = { total: results.length, sentiments: { positive: 0, neutral: 0, negative: 0 } }; results.forEach(r => { if (r.output && r.output.sentiment) { stats.sentiments[r.output.sentiment]++; } }); return { results, statistics: stats, completedAt: new Date().toISOString() };"
+          }
+        }
+      },
+      {
+        "id": "format-output",
+        "type": "azureChatOpenAI",
+        "position": {
+          "x": 825,
+          "y": 405
+        },
+        "data": {
+          "label": "出力フォーマット",
+          "type": "azureChatOpenAI",
+          "category": "chatModels",
+          "config": {
+            "modelName": "gpt-4o-mini",
+            "systemMessage": "与えられた処理結果を、人間が読みやすいレポート形式に整形してください。\n\n以下の形式でマークダウンで出力してください：\n\n# バッチ処理レポート\n\n## 処理統計\n- 処理件数\n- 感情分析の内訳\n\n## 各テキストの処理結果\n### テキスト1\n- 要約: ...\n- キーポイント: ...\n- 感情: ...\n\n（以下同様）\n\n## まとめ\n全体的な傾向や気づきのサマリー",
+            "temperature": 0.5,
+            "maxTokens": 2000
+          }
+        }
+      },
+      {
+        "id": "end-batch",
+        "type": "end",
+        "position": {
+          "x": 1185,
+          "y": 420
+        },
+        "data": {
+          "label": "レポート出力",
+          "type": "end",
+          "category": "flowControl",
+          "config": {
+            "outputFormat": "markdown",
+            "successMessage": "バッチ処理が完了しました"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-start-parse",
+        "source": "start-batch",
+        "target": "parse-input",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-parse-loop",
+        "source": "parse-input",
+        "target": "loop-texts",
+        "sourceHandle": "output",
+        "targetHandle": "array"
+      },
+      {
+        "id": "edge-loop-local",
+        "source": "loop-texts",
+        "target": "local-process",
+        "sourceHandle": "item",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-local-collect",
+        "source": "local-process",
+        "target": "collect-results",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-collect-loop",
+        "source": "collect-results",
+        "target": "loop-texts",
+        "sourceHandle": "output",
+        "targetHandle": "array"
+      },
+      {
+        "id": "edge-loop-aggregate",
+        "source": "loop-texts",
+        "target": "aggregate-results",
+        "sourceHandle": "complete",
+        "targetHandle": "input"
+      },
+      {
+        "id": "edge-aggregate-format",
+        "source": "aggregate-results",
+        "target": "format-output",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      },
+      {
+        "id": "reactflow__edge-format-outputoutput-end-batchinput",
+        "source": "format-output",
+        "target": "end-batch",
+        "sourceHandle": "output",
+        "targetHandle": "input"
+      }
+    ]
+  },
+  "tags": [
+    "バッチ処理",
+    "ループ",
+    "テキスト分析",
+    "要約",
+    "感情分析",
+    "ローカル実行",
+    "キーワード抽出"
+  ],
+  "createdAt": "2025-12-23T10:00:00.000Z",
+  "updatedAt": "2025-12-23T10:30:00.000Z",
+  "syncToFlowise": true,
+  "flowiseFlowData": "{\"nodes\":[{\"id\":\"start-batch\",\"position\":{\"x\":-150,\"y\":210},\"type\":\"customNode\",\"data\":{\"id\":\"start-batch\",\"label\":\"テキスト配列入力\",\"name\":\"start\",\"type\":\"start\",\"baseClasses\":[\"Unknown\"],\"category\":\"flowControl\",\"description\":\"フローの開始地点。ユーザー入力を受け取り、後続のノードに渡します。\",\"inputs\":{\"inputLabel\":\"texts\",\"inputPlaceholder\":\"処理するテキストの配列をJSON形式で入力（例: [\\\"テキスト1\\\", \\\"テキスト2\\\", \\\"テキスト3\\\"]）\",\"inputType\":\"textarea\"},\"outputs\":{},\"inputAnchors\":[],\"outputAnchors\":[{\"label\":\"Output\",\"name\":\"output\",\"type\":\"any\"}]},\"width\":300,\"height\":150},{\"id\":\"parse-input\",\"position\":{\"x\":195,\"y\":210},\"type\":\"customNode\",\"data\":{\"id\":\"parse-input\",\"label\":\"入力パース\",\"name\":\"customTool\",\"type\":\"customTool\",\"baseClasses\":[\"CustomTool\",\"Tool\"],\"category\":\"tools\",\"description\":\"カスタムツール定義\",\"inputs\":{\"toolName\":\"parseTextArray\",\"toolDescription\":\"入力テキストをJSON配列にパースします\",\"jsCode\":\"try { const parsed = typeof input === 'string' ? JSON.parse(input) : input; return Array.isArray(parsed) ? parsed : [parsed]; } catch(e) { return input.split('\\\\n').filter(line => line.trim()); }\"},\"outputs\":{},\"inputAnchors\":[{\"label\":\"Input\",\"name\":\"input\",\"type\":\"any\",\"optional\":true}],\"outputAnchors\":[{\"label\":\"Output\",\"name\":\"output\",\"type\":\"any\"},{\"label\":\"Tool\",\"name\":\"tool\",\"type\":\"tool\"}]},\"width\":300,\"height\":150},{\"id\":\"loop-texts\",\"position\":{\"x\":500,\"y\":200},\"type\":\"customNode\",\"data\":{\"id\":\"loop-texts\",\"label\":\"テキストループ\",\"name\":\"loop\",\"type\":\"loop\",\"baseClasses\":[\"Unknown\"],\"category\":\"flowControl\",\"description\":\"ループ処理。配列の各要素に対して処理を繰り返します。\",\"inputs\":{\"maxIterations\":100,\"itemVariable\":\"currentText\",\"indexVariable\":\"textIndex\"},\"outputs\":{},\"inputAnchors\":[{\"label\":\"Array\",\"name\":\"array\",\"type\":\"any\",\"optional\":true}],\"outputAnchors\":[{\"label\":\"Each Item\",\"name\":\"item\",\"type\":\"any\"},{\"label\":\"Complete\",\"name\":\"complete\",\"type\":\"any\"}]},\"width\":300,\"height\":150},{\"id\":\"llm-process\",\"position\":{\"x\":750,\"y\":100},\"type\":\"customNode\",\"data\":{\"id\":\"llm-process\",\"label\":\"AI処理\",\"name\":\"azureChatOpenAI\",\"type\":\"azureChatOpenAI\",\"baseClasses\":[\"AzureChatOpenAI\",\"BaseChatModel\",\"BaseLanguageModel\"],\"category\":\"chatModels\",\"description\":\"Azure OpenAI Serviceを使用したチャットモデル。GPT-4、GPT-4o、GPT-3.5 Turboなどのモデルを利用可能。\",\"inputs\":{\"temperature\":0.3,\"maxTokens\":1000,\"topP\":1,\"frequencyPenalty\":0,\"presencePenalty\":0,\"systemMessage\":\"あなたは多言語対応のテキスト処理アシスタントです。与えられたテキストに対して以下の処理を行ってください：\\n\\n1. **要約**: テキストの要点を2-3文で簡潔にまとめる\\n2. **キーポイント抽出**: 重要なポイントを箇条書きで3つまで\\n3. **感情分析**: ポジティブ/ニュートラル/ネガティブの判定\\n\\n出力はJSON形式で以下のように返してください：\\n{\\n  \\\"summary\\\": \\\"要約文\\\",\\n  \\\"keyPoints\\\": [\\\"ポイント1\\\", \\\"ポイント2\\\", \\\"ポイント3\\\"],\\n  \\\"sentiment\\\": \\\"positive/neutral/negative\\\",\\n  \\\"originalLength\\\": 元のテキストの文字数\\n}\"},\"outputs\":{},\"inputAnchors\":[{\"label\":\"Input\",\"name\":\"input\",\"type\":\"any\",\"optional\":true}],\"outputAnchors\":[{\"label\":\"Output\",\"name\":\"output\",\"type\":\"any\"},{\"label\":\"Chat Model\",\"name\":\"chatModel\",\"type\":\"chatModel\"}]},\"width\":300,\"height\":150},{\"id\":\"collect-results\",\"position\":{\"x\":1050,\"y\":90},\"type\":\"customNode\",\"data\":{\"id\":\"collect-results\",\"label\":\"結果収集\",\"name\":\"customTool\",\"type\":\"customTool\",\"baseClasses\":[\"CustomTool\",\"Tool\"],\"category\":\"tools\",\"description\":\"カスタムツール定義\",\"inputs\":{\"toolName\":\"collectResult\",\"toolDescription\":\"各イテレーションの結果を収集します\",\"jsCode\":\"const result = { index: context.textIndex, input: context.currentText, output: input }; return result;\"},\"outputs\":{},\"inputAnchors\":[{\"label\":\"Input\",\"name\":\"input\",\"type\":\"any\",\"optional\":true}],\"outputAnchors\":[{\"label\":\"Output\",\"name\":\"output\",\"type\":\"any\"},{\"label\":\"Tool\",\"name\":\"tool\",\"type\":\"tool\"}]},\"width\":300,\"height\":150},{\"id\":\"aggregate-results\",\"position\":{\"x\":500,\"y\":400},\"type\":\"customNode\",\"data\":{\"id\":\"aggregate-results\",\"label\":\"結果集約\",\"name\":\"customTool\",\"type\":\"customTool\",\"baseClasses\":[\"CustomTool\",\"Tool\"],\"category\":\"tools\",\"description\":\"カスタムツール定義\",\"inputs\":{\"toolName\":\"aggregateResults\",\"toolDescription\":\"すべての処理結果を集約してレポートを作成します\",\"jsCode\":\"const results = Array.isArray(input) ? input : [input]; const stats = { total: results.length, sentiments: { positive: 0, neutral: 0, negative: 0 } }; results.forEach(r => { if (r.output && r.output.sentiment) { stats.sentiments[r.output.sentiment]++; } }); return { results, statistics: stats, completedAt: new Date().toISOString() };\"},\"outputs\":{},\"inputAnchors\":[{\"label\":\"Input\",\"name\":\"input\",\"type\":\"any\",\"optional\":true}],\"outputAnchors\":[{\"label\":\"Output\",\"name\":\"output\",\"type\":\"any\"},{\"label\":\"Tool\",\"name\":\"tool\",\"type\":\"tool\"}]},\"width\":300,\"height\":150},{\"id\":\"format-output\",\"position\":{\"x\":825,\"y\":405},\"type\":\"customNode\",\"data\":{\"id\":\"format-output\",\"label\":\"出力フォーマット\",\"name\":\"azureChatOpenAI\",\"type\":\"azureChatOpenAI\",\"baseClasses\":[\"AzureChatOpenAI\",\"BaseChatModel\",\"BaseLanguageModel\"],\"category\":\"chatModels\",\"description\":\"Azure OpenAI Serviceを使用したチャットモデル。GPT-4、GPT-4o、GPT-3.5 Turboなどのモデルを利用可能。\",\"inputs\":{\"temperature\":0.5,\"maxTokens\":2000,\"topP\":1,\"frequencyPenalty\":0,\"presencePenalty\":0,\"systemMessage\":\"与えられた処理結果を、人間が読みやすいレポート形式に整形してください。\\n\\n以下の形式でマークダウンで出力してください：\\n\\n# バッチ処理レポート\\n\\n## 処理統計\\n- 処理件数\\n- 感情分析の内訳\\n\\n## 各テキストの処理結果\\n### テキスト1\\n- 要約: ...\\n- キーポイント: ...\\n- 感情: ...\\n\\n（以下同様）\\n\\n## まとめ\\n全体的な傾向や気づきのサマリー\"},\"outputs\":{},\"inputAnchors\":[{\"label\":\"Input\",\"name\":\"input\",\"type\":\"any\",\"optional\":true}],\"outputAnchors\":[{\"label\":\"Output\",\"name\":\"output\",\"type\":\"any\"},{\"label\":\"Chat Model\",\"name\":\"chatModel\",\"type\":\"chatModel\"}]},\"width\":300,\"height\":150},{\"id\":\"end-batch\",\"position\":{\"x\":1185,\"y\":420},\"type\":\"customNode\",\"data\":{\"id\":\"end-batch\",\"label\":\"レポート出力\",\"name\":\"end\",\"type\":\"end\",\"baseClasses\":[\"Unknown\"],\"category\":\"flowControl\",\"description\":\"フローの終了地点。最終結果を出力します。\",\"inputs\":{\"outputFormat\":\"markdown\",\"successMessage\":\"バッチ処理が完了しました\"},\"outputs\":{},\"inputAnchors\":[{\"label\":\"Input\",\"name\":\"input\",\"type\":\"any\",\"optional\":true}],\"outputAnchors\":[]},\"width\":300,\"height\":150}],\"edges\":[{\"id\":\"edge-start-parse\",\"source\":\"start-batch\",\"sourceHandle\":\"output\",\"target\":\"parse-input\",\"targetHandle\":\"input\",\"type\":\"buttonedge\"},{\"id\":\"edge-parse-loop\",\"source\":\"parse-input\",\"sourceHandle\":\"output\",\"target\":\"loop-texts\",\"targetHandle\":\"array\",\"type\":\"buttonedge\"},{\"id\":\"edge-loop-process\",\"source\":\"loop-texts\",\"sourceHandle\":\"item\",\"target\":\"llm-process\",\"targetHandle\":\"input\",\"type\":\"buttonedge\"},{\"id\":\"edge-process-collect\",\"source\":\"llm-process\",\"sourceHandle\":\"output\",\"target\":\"collect-results\",\"targetHandle\":\"input\",\"type\":\"buttonedge\"},{\"id\":\"edge-collect-loop\",\"source\":\"collect-results\",\"sourceHandle\":\"output\",\"target\":\"loop-texts\",\"targetHandle\":\"array\",\"type\":\"buttonedge\"},{\"id\":\"edge-loop-aggregate\",\"source\":\"loop-texts\",\"sourceHandle\":\"complete\",\"target\":\"aggregate-results\",\"targetHandle\":\"input\",\"type\":\"buttonedge\"},{\"id\":\"edge-aggregate-format\",\"source\":\"aggregate-results\",\"sourceHandle\":\"output\",\"target\":\"format-output\",\"targetHandle\":\"input\",\"type\":\"buttonedge\"},{\"id\":\"reactflow__edge-format-outputoutput-end-batchinput\",\"source\":\"format-output\",\"sourceHandle\":\"output\",\"target\":\"end-batch\",\"targetHandle\":\"input\",\"type\":\"buttonedge\"}],\"viewport\":{\"x\":0,\"y\":0,\"zoom\":1}}"
+}

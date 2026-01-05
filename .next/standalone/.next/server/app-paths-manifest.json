@@ -1,0 +1,20 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/flowise/chat/route": "app/api/flowise/chat/route.js",
+  "/api/flowise/status/route": "app/api/flowise/status/route.js",
+  "/api/owlagents/[id]/execute/route": "app/api/owlagents/[id]/execute/route.js",
+  "/api/flowise/chatflows/route": "app/api/flowise/chatflows/route.js",
+  "/api/owlagents/route": "app/api/owlagents/route.js",
+  "/api/owlagents/[id]/route": "app/api/owlagents/[id]/route.js",
+  "/api/pptx/download/route": "app/api/pptx/download/route.js",
+  "/api/pptx/route": "app/api/pptx/route.js",
+  "/api/pptx/upload/route": "app/api/pptx/upload/route.js",
+  "/api/flows/execute/route": "app/api/flows/execute/route.js",
+  "/agent-builder/page": "app/agent-builder/page.js",
+  "/agent-canvas/page": "app/agent-canvas/page.js",
+  "/chat/page": "app/chat/page.js",
+  "/agent-canvas/[id]/page": "app/agent-canvas/[id]/page.js",
+  "/page": "app/page.js",
+  "/store/page": "app/store/page.js",
+  "/agent-canvas/[id]/run/page": "app/agent-canvas/[id]/run/page.js"
+}

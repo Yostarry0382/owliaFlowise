@@ -1,0 +1,91 @@
+{
+  "id": "bc28add6-1edf-4db3-846d-c12342b433c6",
+  "name": "RAG利用",
+  "description": "RAG利用",
+  "iconStyle": "default",
+  "version": "1.0.0",
+  "flow": {
+    "nodes": [
+      {
+        "id": "1",
+        "type": "custom",
+        "position": {
+          "x": 270,
+          "y": 131.5
+        },
+        "data": {
+          "label": "LLMチェーンノード",
+          "type": "llm",
+          "config": {}
+        },
+        "width": 187,
+        "height": 64,
+        "selected": false,
+        "positionAbsolute": {
+          "x": 270,
+          "y": 131.5
+        },
+        "dragging": false
+      },
+      {
+        "id": "1763352143178",
+        "type": "custom",
+        "position": {
+          "x": 103,
+          "y": 19.5
+        },
+        "data": {
+          "label": "メモリノード",
+          "type": "memory",
+          "config": {}
+        },
+        "width": 180,
+        "height": 64
+      },
+      {
+        "id": "1763352152552",
+        "type": "custom",
+        "position": {
+          "x": 445.5,
+          "y": 18
+        },
+        "data": {
+          "label": "ツールノード",
+          "type": "tool",
+          "config": {}
+        },
+        "width": 180,
+        "height": 66,
+        "selected": true,
+        "positionAbsolute": {
+          "x": 445.5,
+          "y": 18
+        },
+        "dragging": false
+      }
+    ],
+    "edges": [
+      {
+        "source": "1763352143178",
+        "sourceHandle": null,
+        "target": "1",
+        "targetHandle": null,
+        "id": "reactflow__edge-1763352143178-1"
+      },
+      {
+        "source": "1763352152552",
+        "sourceHandle": null,
+        "target": "1",
+        "targetHandle": null,
+        "id": "reactflow__edge-1763352152552-1"
+      }
+    ],
+    "viewport": {
+      "x": -160,
+      "y": 345,
+      "zoom": 2
+    }
+  },
+  "createdAt": "2025-11-17T04:03:02.575Z",
+  "updatedAt": "2025-11-17T04:03:02.575Z"
+}
