@@ -1,1 +1,0 @@
-self.__REACT_LOADABLE_MANIFEST='{"app\\\\store\\\\page.tsx -> ../components/FlowiseCanvasEmbed":{"id":48841,"files":["static/chunks/783-91f422bce9188f1d.js","static/chunks/841.39098f90e9293a50.js"]}}';
