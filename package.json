@@ -6,8 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "build:standalone": "next build && node scripts/copy-standalone.js",
+    "pack:standalone": "node scripts/pack-standalone.js",
     "start": "next start",
     "start:standalone": "node .next/standalone/server.js",
+    "start:deploy": "node scripts/deploy-standalone.js",
     "lint": "next lint"
   },
   "dependencies": {
