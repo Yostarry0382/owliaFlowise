@@ -6,11 +6,20 @@ const archiver = require('archiver');
 
 const rootDir = process.cwd();
 const standaloneDir = path.join(rootDir, '.next', 'standalone');
+const staticDir = path.join(rootDir, '.next', 'static');
+const publicDir = path.join(rootDir, 'public');
 const zipFile = path.join(rootDir, 'standalone.zip');
 
 // Check if standalone directory exists
 if (!fs.existsSync(standaloneDir)) {
   console.error('Error: .next/standalone directory not found.');
+  console.error('Please run "npm run build:standalone" first.');
+  process.exit(1);
+}
+
+// Check if static directory exists
+if (!fs.existsSync(staticDir)) {
+  console.error('Error: .next/static directory not found.');
   console.error('Please run "npm run build:standalone" first.');
   process.exit(1);
 }
@@ -46,6 +55,17 @@ archive.on('error', (err) => {
 archive.pipe(output);
 
 // Add standalone directory to archive
+console.log('Adding standalone directory...');
 archive.directory(standaloneDir, 'standalone');
+
+// Add .next/static to standalone/.next/static (required by Next.js)
+console.log('Adding .next/static directory...');
+archive.directory(staticDir, 'standalone/.next/static');
+
+// Add public directory if exists
+if (fs.existsSync(publicDir)) {
+  console.log('Adding public directory...');
+  archive.directory(publicDir, 'standalone/public');
+}
 
 archive.finalize();
