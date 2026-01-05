@@ -17,7 +17,9 @@
       "Bash(docker run:*)",
       "Bash(timeout:*)",
       "Bash(ping:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(npm install:*)",
+      "Bash(node scripts/deploy-standalone.js:*)"
     ]
   }
 }
