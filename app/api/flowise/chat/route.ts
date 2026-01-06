@@ -49,11 +49,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       message: response.text || '',
       sessionId: currentSessionId,
-      sourceDocuments: response.sourceDocuments,
+      sourceDocuments: response.sourceDocuments || [],
       chatId: response.chatId,
       chatMessageId: response.chatMessageId,
-      usedTools: response.usedTools,
-      agentReasoning: response.agentReasoning
+      usedTools: response.usedTools || [],
+      agentReasoning: response.agentReasoning || []
     });
   } catch (error) {
     console.error('Error in chat API:', error);

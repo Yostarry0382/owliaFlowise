@@ -505,8 +505,8 @@ export async function executeFlowWithFlowise(
       success: true,
       output: data,
       text: data.message || data.text || data.answer || JSON.stringify(data),
-      sourceDocuments: data.sourceDocuments,
-      usedTools: data.usedTools,
+      sourceDocuments: data.sourceDocuments || [],
+      usedTools: data.usedTools || [],
       executionTime: Date.now() - startTime,
     };
   } catch (error) {
@@ -583,9 +583,9 @@ export async function executeWithNativeEngine(
       output: data.output,
       text: typeof data.output === 'string' ? data.output : JSON.stringify(data.output, null, 2),
       executionTime: data.executionTime || (Date.now() - startTime),
-      sourceDocuments: data.logs?.filter((l: string) => l.includes('[VectorStore]')).length > 0
+      sourceDocuments: (data.logs?.filter((l: string) => l.includes('[VectorStore]')) || []).length > 0
         ? [{ pageContent: 'ネイティブエンジンで実行されました', metadata: { source: 'native' } }]
-        : undefined,
+        : [],
     };
   } catch (error) {
     return {
