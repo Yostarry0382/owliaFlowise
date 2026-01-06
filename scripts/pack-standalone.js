@@ -68,4 +68,11 @@ if (fs.existsSync(publicDir)) {
   archive.directory(publicDir, 'standalone/public');
 }
 
+// Add .env.local if exists
+const envLocalFile = path.join(rootDir, '.env.local');
+if (fs.existsSync(envLocalFile)) {
+  console.log('Adding .env.local...');
+  archive.file(envLocalFile, { name: 'standalone/.env.local' });
+}
+
 archive.finalize();
