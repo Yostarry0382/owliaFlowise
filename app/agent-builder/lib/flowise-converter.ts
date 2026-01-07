@@ -519,9 +519,9 @@ export async function executeFlowWithFlowise(
 }
 
 /**
- * ネイティブエンジンを使用してフローを実行
+ * 一時的なChatflowを作成してFlowise経由で実行（テスト用）
  */
-export async function executeWithNativeEngine(
+export async function executeTemporaryFlow(
   nodes: Node<CustomNodeData>[],
   edges: Edge[],
   question: string,
@@ -529,111 +529,6 @@ export async function executeWithNativeEngine(
 ): Promise<FlowiseExecutionResult> {
   const startTime = Date.now();
 
-  try {
-    // ノードをFlowNode形式に変換
-    const flowNodes = nodes.map(n => ({
-      id: n.id,
-      type: n.data.type || n.type || 'custom',
-      position: n.position,
-      data: {
-        label: n.data.label,
-        type: n.data.type,
-        category: n.data.category,
-        config: n.data.config,
-        humanReview: n.data.humanReview,
-        agentId: n.data.agentId,
-        agentName: n.data.agentName,
-      },
-    }));
-
-    // エッジをFlowEdge形式に変換
-    const flowEdges = edges.map(e => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
-      sourceHandle: e.sourceHandle,
-      targetHandle: e.targetHandle,
-    }));
-
-    // ネイティブエンジンAPIを呼び出し
-    const response = await fetch('/api/flows/execute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nodes: flowNodes,
-        edges: flowEdges,
-        input: question,
-        sessionId,
-        useNative: true,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok || !data.success) {
-      return {
-        success: false,
-        error: data.error || 'Native execution failed',
-        executionTime: Date.now() - startTime,
-      };
-    }
-
-    return {
-      success: true,
-      output: data.output,
-      text: typeof data.output === 'string' ? data.output : JSON.stringify(data.output, null, 2),
-      executionTime: data.executionTime || (Date.now() - startTime),
-      sourceDocuments: (data.logs?.filter((l: string) => l.includes('[VectorStore]')) || []).length > 0
-        ? [{ pageContent: 'ネイティブエンジンで実行されました', metadata: { source: 'native' } }]
-        : [],
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      executionTime: Date.now() - startTime,
-    };
-  }
-}
-
-/**
- * 一時的なChatflowを作成して実行（テスト用）
- * デフォルトでネイティブエンジンを使用、フォールバックとしてFlowiseを使用
- */
-export async function executeTemporaryFlow(
-  nodes: Node<CustomNodeData>[],
-  edges: Edge[],
-  question: string,
-  sessionId?: string,
-  forceFlowise: boolean = false
-): Promise<FlowiseExecutionResult> {
-  const startTime = Date.now();
-
-  // まずネイティブエンジンを試行（forceFlowiseがfalseの場合）
-  if (!forceFlowise) {
-    const nativeResult = await executeWithNativeEngine(nodes, edges, question, sessionId);
-
-    // 成功した場合はそのまま返す
-    if (nativeResult.success) {
-      return {
-        ...nativeResult,
-        // ネイティブエンジン使用を示すマーカー
-        usedTools: [{ tool: 'OwliaFabrica Native Engine', toolOutput: 'Executed successfully' }],
-      };
-    }
-
-    // Human Reviewで待機中の場合
-    if ((nativeResult as any).pendingReview) {
-      return {
-        success: true,
-        text: '人間による確認を待っています...',
-        output: (nativeResult as any).pendingReview,
-        executionTime: nativeResult.executionTime,
-      };
-    }
-  }
-
-  // Flowise経由の実行を試行
   try {
     // フローをFlowise形式に変換
     const flowData = serializeFlowForFlowise(nodes, edges);
@@ -673,7 +568,7 @@ export async function executeTemporaryFlow(
       // Flowiseの一般的なエラーを分かりやすいメッセージに変換
       let userFriendlyMessage = errorMessage;
       if (errorMessage.includes('Ending node must be either a Chain or Agent or Engine')) {
-        userFriendlyMessage = 'フローの終端ノードがFlowise形式と互換性がありません。Agent, Chain, または Engine ノードで終了するフローが必要です。現在のフロー構造はOwliaFabrica独自の形式でテスト実行されます。';
+        userFriendlyMessage = 'フローの終端ノードがFlowise形式と互換性がありません。Agent, Chain, または Engine ノードで終了するフローが必要です。';
       }
 
       return {

@@ -9,15 +9,6 @@ export interface NodeData {
   type: string;
   category: string;
   config?: Record<string, unknown>;
-  humanReview?: {
-    enabled: boolean;
-    allowEdit?: boolean;
-    message?: string;
-    autoApproveTimeout?: number;
-    requiresApproval?: boolean;
-    approvalMessage?: string;
-    timeoutSeconds?: number;
-  };
   agentId?: string;
   agentName?: string;
   onConfigure?: (nodeId: string) => void;
@@ -114,15 +105,15 @@ export function useFlowOperations<T extends NodeData>({
 
   // ノード設定を保存
   const handleSaveNodeConfig = useCallback(
-    (nodeId: string, config: Record<string, unknown>, humanReview?: T['humanReview']) => {
+    (nodeId: string, config: Record<string, unknown>) => {
       saveToHistory('Configure node');
       setNodes((nds) =>
         nds.map((n) =>
-          n.id === nodeId ? { ...n, data: { ...n.data, config, humanReview } } : n
+          n.id === nodeId ? { ...n, data: { ...n.data, config } } : n
         )
       );
       setSelectedNode((prev) =>
-        prev?.id === nodeId ? { ...prev, data: { ...prev.data, config, humanReview } } : prev
+        prev?.id === nodeId ? { ...prev, data: { ...prev.data, config } } : prev
       );
     },
     [setNodes, saveToHistory]

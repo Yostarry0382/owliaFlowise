@@ -4,7 +4,6 @@ import React, { memo, useState } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { Box, Typography, IconButton, Tooltip, Chip, Collapse } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
-import PersonIcon from '@mui/icons-material/Person';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -19,20 +18,13 @@ export interface EnhancedCustomNodeData {
   type: string;
   category: string;
   config?: Record<string, any>;
-  humanReview?: {
-    enabled: boolean;
-    requiresApproval?: boolean;
-    approvalMessage?: string;
-    timeoutSeconds?: number;
-    allowEdit?: boolean;
-  };
   agentId?: string;
   agentName?: string;
   // コールバック
   onConfigure?: (nodeId: string) => void;
   onDelete?: (nodeId: string) => void;
   // 実行状態
-  executionStatus?: 'idle' | 'running' | 'success' | 'error' | 'pending-review';
+  executionStatus?: 'idle' | 'running' | 'success' | 'error';
   executionOutput?: string;
   // 表示モード
   isCompact?: boolean;
@@ -75,8 +67,6 @@ function EnhancedCustomNode({ id, data, selected }: NodeProps<EnhancedCustomNode
         return '#4CAF50';
       case 'error':
         return '#f44336';
-      case 'pending-review':
-        return '#FFD700';
       default:
         return 'transparent';
     }
@@ -91,8 +81,6 @@ function EnhancedCustomNode({ id, data, selected }: NodeProps<EnhancedCustomNode
         return <CheckCircleIcon sx={{ fontSize: 14, color: '#4CAF50' }} />;
       case 'error':
         return <ErrorIcon sx={{ fontSize: 14, color: '#f44336' }} />;
-      case 'pending-review':
-        return <PersonIcon sx={{ fontSize: 14, color: '#FFD700' }} />;
       default:
         return null;
     }
@@ -319,11 +307,6 @@ function EnhancedCustomNode({ id, data, selected }: NodeProps<EnhancedCustomNode
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           {getStatusIcon()}
-          {data.humanReview?.enabled && (
-            <Tooltip title="Human Review Enabled">
-              <PersonIcon sx={{ fontSize: 16, color: '#FFD700' }} />
-            </Tooltip>
-          )}
           <Tooltip title="Configure">
             <IconButton
               size="small"

@@ -143,7 +143,6 @@ export function useOwlAgentManager<T extends object>(
                   type: (n.data as { type?: string }).type,
                   category: (n.data as { category?: string }).category,
                   config: (n.data as { config?: object }).config,
-                  humanReview: (n.data as { humanReview?: object }).humanReview,
                   agentId: (n.data as { agentId?: string }).agentId,
                   agentName: (n.data as { agentName?: string }).agentName,
                 },

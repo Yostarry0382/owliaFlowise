@@ -21,7 +21,6 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningIcon from '@mui/icons-material/Warning';
 import ErrorIcon from '@mui/icons-material/Error';
-import PersonIcon from '@mui/icons-material/Person';
 import { Node, Edge } from 'reactflow';
 import { useTheme } from '../contexts/ThemeContext';
 import { getNodeDefinition } from '../types/node-definitions';
@@ -38,7 +37,6 @@ interface ExecutionStep {
   nodeType: string;
   nodeIcon: string;
   color: string;
-  hasHumanReview: boolean;
   hasConfig: boolean;
   missingConfig: string[];
 }
@@ -94,7 +92,6 @@ export default function ExecutionPreviewPanel({ nodes, edges, onClose }: Executi
           nodeType: node.data?.type || 'unknown',
           nodeIcon: nodeDef?.icon || '📦',
           color: nodeDef?.color || '#607D8B',
-          hasHumanReview: node.data?.humanReview?.enabled || false,
           hasConfig: Object.keys(config).length > 0,
           missingConfig,
         });
@@ -262,11 +259,6 @@ export default function ExecutionPreviewPanel({ nodes, edges, onClose }: Executi
                   }}
                 />
                 <Box sx={{ display: 'flex', gap: 0.5 }}>
-                  {step.hasHumanReview && (
-                    <Tooltip title="Human Review Required">
-                      <PersonIcon sx={{ fontSize: 16, color: '#FFD700' }} />
-                    </Tooltip>
-                  )}
                   {step.missingConfig.length > 0 ? (
                     <Tooltip title={`Missing: ${step.missingConfig.join(', ')}`}>
                       <WarningIcon sx={{ fontSize: 16, color: '#ff9800' }} />

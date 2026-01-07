@@ -31,7 +31,6 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import KeyIcon from '@mui/icons-material/Key';
 import SettingsIcon from '@mui/icons-material/Settings';
 import LinkIcon from '@mui/icons-material/Link';
-import PersonIcon from '@mui/icons-material/Person';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import LightbulbIcon from '@mui/icons-material/Lightbulb';
@@ -52,7 +51,7 @@ interface NodeConfigPanelProps {
   nodeId: string;
   nodeData: CustomNodeData;
   onClose: () => void;
-  onSave: (nodeId: string, config: Record<string, any>, humanReview?: CustomNodeData['humanReview']) => void;
+  onSave: (nodeId: string, config: Record<string, any>) => void;
   savedOwlAgents?: SavedOwlAgent[];
   connectedTools?: { id: string; label: string; type: string }[];
 }
@@ -107,13 +106,6 @@ function categorizeInputs(inputs: NodeInputParam[], excludeToolParams: boolean =
 
 export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, savedOwlAgents = [], connectedTools = [] }: NodeConfigPanelProps) {
   const [config, setConfig] = useState<Record<string, any>>(nodeData.config || {});
-  const [humanReview, setHumanReview] = useState(nodeData.humanReview || {
-    enabled: false,
-    requiresApproval: true,
-    approvalMessage: '',
-    timeoutSeconds: 0,
-    allowEdit: true,
-  });
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [advancedExpanded, setAdvancedExpanded] = useState(false);
 
@@ -128,16 +120,9 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
     return categorizeInputs(nodeDefinition.inputs, isLLMNode);
   }, [nodeDefinition, isLLMNode]);
 
-  // nodeIdまたはnodeDataが変更されたらconfigとhumanReviewを更新
+  // nodeIdまたはnodeDataが変更されたらconfigを更新
   useEffect(() => {
     setConfig(nodeData.config || {});
-    setHumanReview(nodeData.humanReview || {
-      enabled: false,
-      requiresApproval: true,
-      approvalMessage: '',
-      timeoutSeconds: 0,
-      allowEdit: true,
-    });
   }, [nodeId, nodeData]);
 
   // デフォルト値の設定（初期ロード時のみ）
@@ -177,12 +162,8 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
     setConfig((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleHumanReviewChange = (field: string, value: any) => {
-    setHumanReview((prev) => ({ ...prev, [field]: value }));
-  };
-
   const handleSave = () => {
-    onSave(nodeId, config, humanReview);
+    onSave(nodeId, config);
     onClose();
   };
 
@@ -786,106 +767,6 @@ export default function NodeConfigPanel({ nodeId, nodeData, onClose, onSave, sav
         )}
 
         <Divider sx={{ borderColor: '#2d2d44', my: 2 }} />
-
-        {/* 人間レビュー設定 */}
-        <Accordion
-          sx={{
-            bgcolor: '#252536',
-            color: '#fff',
-            '&:before': { display: 'none' },
-          }}
-        >
-          <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#888' }} />}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <PersonIcon sx={{ fontSize: 18, color: humanReview.enabled ? '#FFD700' : '#888' }} />
-              <Typography sx={{ fontSize: '0.85rem' }}>Human Review</Typography>
-              {humanReview.enabled && (
-                <Chip
-                  label="ON"
-                  size="small"
-                  sx={{
-                    bgcolor: '#FFD700',
-                    color: '#000',
-                    height: 18,
-                    fontSize: '0.65rem',
-                    fontWeight: 600,
-                  }}
-                />
-              )}
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={humanReview.enabled}
-                    onChange={(e) => handleHumanReviewChange('enabled', e.target.checked)}
-                    sx={{
-                      '& .MuiSwitch-switchBase.Mui-checked': { color: '#FFD700' },
-                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                        backgroundColor: '#FFD700',
-                      },
-                    }}
-                  />
-                }
-                label={<Typography sx={{ color: '#fff', fontSize: '0.9rem' }}>Enable Review</Typography>}
-              />
-
-              {humanReview.enabled && (
-                <>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={humanReview.allowEdit}
-                        onChange={(e) => handleHumanReviewChange('allowEdit', e.target.checked)}
-                      />
-                    }
-                    label={<Typography sx={{ color: '#fff', fontSize: '0.9rem' }}>Allow Edit</Typography>}
-                  />
-
-                  <TextField
-                    label="Approval Message"
-                    value={humanReview.approvalMessage || ''}
-                    onChange={(e) => handleHumanReviewChange('approvalMessage', e.target.value)}
-                    fullWidth
-                    size="small"
-                    placeholder="Please review this output..."
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        color: '#fff',
-                        '& fieldset': { borderColor: '#3d3d54' },
-                      },
-                      '& .MuiInputLabel-root': { color: '#888' },
-                    }}
-                  />
-
-                  <Box>
-                    <Typography sx={{ color: '#888', fontSize: '0.8rem', mb: 0.5 }}>
-                      Auto-approve Timeout (seconds, 0 = disabled)
-                    </Typography>
-                    <TextField
-                      type="number"
-                      value={humanReview.timeoutSeconds || 0}
-                      onChange={(e) =>
-                        handleHumanReviewChange('timeoutSeconds', Math.max(0, Number(e.target.value)))
-                      }
-                      fullWidth
-                      size="small"
-                      inputProps={{ min: 0 }}
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          color: '#fff',
-                          '& fieldset': { borderColor: '#3d3d54' },
-                        },
-                      }}
-                    />
-                  </Box>
-                </>
-              )}
-            </Box>
-          </AccordionDetails>
-        </Accordion>
 
         {/* ノードリファレンス */}
         {(() => {

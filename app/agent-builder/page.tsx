@@ -379,15 +379,15 @@ function AgentBuilderContent() {
 
   // ノード設定を保存
   const handleSaveNodeConfig = useCallback(
-    (nodeId: string, config: Record<string, any>, humanReview?: EnhancedCustomNodeData['humanReview']) => {
+    (nodeId: string, config: Record<string, any>) => {
       saveToHistory('Configure node');
       setNodes((nds) =>
         nds.map((n) =>
-          n.id === nodeId ? { ...n, data: { ...n.data, config, humanReview } } : n
+          n.id === nodeId ? { ...n, data: { ...n.data, config } } : n
         )
       );
       setSelectedNode((prev) =>
-        prev?.id === nodeId ? { ...prev, data: { ...prev.data, config, humanReview } } : prev
+        prev?.id === nodeId ? { ...prev, data: { ...prev.data, config } } : prev
       );
     },
     [setNodes, saveToHistory]
@@ -462,7 +462,6 @@ function AgentBuilderContent() {
                   type: n.data.type,
                   category: n.data.category,
                   config: n.data.config,
-                  humanReview: n.data.humanReview,
                   agentId: n.data.agentId,
                   agentName: n.data.agentName,
                 },

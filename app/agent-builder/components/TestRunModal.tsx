@@ -35,16 +35,13 @@ import DataObjectIcon from '@mui/icons-material/DataObject';
 import VerifiedIcon from '@mui/icons-material/Verified';
 import DescriptionIcon from '@mui/icons-material/Description';
 import BuildIcon from '@mui/icons-material/Build';
-import PersonIcon from '@mui/icons-material/Person';
 import InputIcon from '@mui/icons-material/Input';
 import OutputIcon from '@mui/icons-material/Output';
 import TimelineIcon from '@mui/icons-material/Timeline';
-import PauseCircleIcon from '@mui/icons-material/PauseCircle';
 import SkipNextIcon from '@mui/icons-material/SkipNext';
 import CloudIcon from '@mui/icons-material/Cloud';
 import { Node, Edge } from 'reactflow';
 import { CustomNodeData } from './CustomNode';
-import HumanReviewModal, { PendingReview, ReviewDecision } from './HumanReviewModal';
 import {
   validateFlowForFlowise,
   convertFlowToFlowise,
@@ -92,14 +89,13 @@ interface NodeExecutionLog {
   inputs: Record<string, any>;
   output: any;
   executionTime: number;
-  status: 'success' | 'error' | 'pending_review' | 'skipped';
+  status: 'success' | 'error' | 'skipped';
   error?: string;
   timestamp: number;
 }
 
-// 拡張された実行結果型（Human Review対応）
+// 拡張された実行結果型
 interface ExtendedExecutionResult extends FlowiseExecutionResult {
-  pendingReview?: PendingReview;
   logs?: string[];
   nodeExecutionLogs?: NodeExecutionLog[];
   executionMode?: 'flowise';
@@ -115,15 +111,6 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
   const [expandedOwlAgents, setExpandedOwlAgents] = useState<Map<string, ExpandedOwlAgentInfo>>(new Map());
   const [isLoadingAgents, setIsLoadingAgents] = useState(false);
   const [flowiseStatus, setFlowiseStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
-
-  // Human Review状態
-  const [pendingReview, setPendingReview] = useState<PendingReview | null>(null);
-  const [showReviewModal, setShowReviewModal] = useState(false);
-  const [executionContext, setExecutionContext] = useState<{
-    nodeOutputs: Record<string, any>;
-    currentNodeIndex: number;
-    nodeExecutionLogs: NodeExecutionLog[];
-  } | null>(null);
 
   // OwlAgentノードを検出
   const owlAgentNodes = useMemo(() => {
@@ -223,120 +210,6 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
     setTabValue(newValue);
   };
 
-  // Human Reviewの決定を処理
-  const handleReviewDecision = useCallback(async (decision: ReviewDecision) => {
-    setShowReviewModal(false);
-
-    if (!pendingReview) return;
-
-    // 却下の場合
-    if (decision.status === 'rejected') {
-      setResult({
-        success: false,
-        error: `実行がノード "${pendingReview.nodeName || pendingReview.nodeId}" で却下されました。${decision.comments ? ` コメント: ${decision.comments}` : ''}`,
-      });
-      setPendingReview(null);
-      setExecutionContext(null);
-      setIsRunning(false);
-      return;
-    }
-
-    // 承認または編集の場合、フロー実行を継続
-    setIsRunning(true);
-
-    // 以前のログを保持
-    const previousLogs = executionContext?.nodeExecutionLogs || [];
-
-    try {
-      const response = await fetch('/api/flows/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'continue-after-review',
-          nodes: nodes.map(n => ({
-            id: n.id,
-            type: n.data.type || n.type || 'custom',
-            position: n.position,
-            data: {
-              label: n.data.label,
-              type: n.data.type,
-              category: n.data.category,
-              config: n.data.config,
-              humanReview: n.data.humanReview,
-              agentId: n.data.agentId,
-              agentName: n.data.agentName,
-            },
-          })),
-          edges: edges.map(e => ({
-            id: e.id,
-            source: e.source,
-            target: e.target,
-            sourceHandle: e.sourceHandle,
-            targetHandle: e.targetHandle,
-          })),
-          sessionId,
-          reviewNodeId: pendingReview.nodeId,
-          reviewDecision: decision,
-          previousOutputs: executionContext?.nodeOutputs,
-          previousNodeExecutionLogs: previousLogs,
-          input,
-        }),
-      });
-
-      const data = await response.json();
-
-      // 以前のログと新しいログをマージ
-      const mergedLogs = [...previousLogs, ...(data.nodeExecutionLogs || [])];
-
-      // 再び Human Review が必要な場合
-      if (data.pendingReview) {
-        const nodeName = nodes.find(n => n.id === data.pendingReview.nodeId)?.data.label;
-        setPendingReview({
-          ...data.pendingReview,
-          nodeName,
-        });
-        setExecutionContext({
-          nodeOutputs: data.nodeOutputs || {},
-          currentNodeIndex: data.currentNodeIndex || 0,
-          nodeExecutionLogs: mergedLogs,
-        });
-        setShowReviewModal(true);
-        setResult({
-          success: true,
-          text: '人間による確認を待っています...',
-          output: data.pendingReview.output,
-          executionTime: data.executionTime,
-          logs: data.logs,
-          pendingReview: data.pendingReview,
-          nodeExecutionLogs: mergedLogs,
-        });
-      } else {
-        // 実行完了
-        setResult({
-          success: data.success,
-          output: data.output,
-          text: typeof data.output === 'string' ? data.output : JSON.stringify(data.output, null, 2),
-          executionTime: data.executionTime,
-          error: data.error,
-          logs: data.logs,
-          nodeExecutionLogs: mergedLogs,
-        });
-        setPendingReview(null);
-        setExecutionContext(null);
-      }
-    } catch (error) {
-      const appError = parseError(error);
-      setResult({
-        success: false,
-        error: getUserFriendlyMessage(appError, 'フロー実行を継続できませんでした'),
-        // エラー時も以前のログを保持
-        nodeExecutionLogs: previousLogs,
-      });
-    } finally {
-      setIsRunning(false);
-    }
-  }, [pendingReview, nodes, edges, sessionId, executionContext, input]);
-
   const handleRun = async () => {
     // ノードがあれば実行可能
     if (!input.trim() || nodes.length === 0) return;
@@ -352,8 +225,6 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
 
     setIsRunning(true);
     setResult(null);
-    setPendingReview(null);
-    setExecutionContext(null);
     setTabValue(2); // Executeタブに切り替え
 
     try {
@@ -372,7 +243,6 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
               type: n.data.type,
               category: n.data.category,
               config: n.data.config,
-              humanReview: n.data.humanReview,
               agentId: n.data.agentId,
               agentName: n.data.agentName,
             },
@@ -391,44 +261,20 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
 
       const data = await response.json();
 
-      // Human Review が必要な場合
-      if (data.pendingReview) {
-        const nodeName = nodes.find(n => n.id === data.pendingReview.nodeId)?.data.label;
-        setPendingReview({
-          ...data.pendingReview,
-          nodeName,
-        });
-        setExecutionContext({
-          nodeOutputs: data.nodeOutputs || {},
-          currentNodeIndex: data.currentNodeIndex || 0,
-          nodeExecutionLogs: data.nodeExecutionLogs || [],
-        });
-        setShowReviewModal(true);
-        setResult({
-          success: true,
-          text: '人間による確認を待っています...',
-          output: data.pendingReview.output,
-          executionTime: data.executionTime,
-          logs: data.logs,
-          pendingReview: data.pendingReview,
-          nodeExecutionLogs: data.nodeExecutionLogs,
-        });
-      } else {
-        // 通常の実行結果
-        setResult({
-          success: data.success,
-          output: data.output,
-          text: typeof data.output === 'string' ? data.output : JSON.stringify(data.output, null, 2),
-          executionTime: data.executionTime,
-          error: data.error,
-          logs: data.logs,
-          usedTools: data.usedTools || [{ tool: 'Flowise Backend', toolOutput: 'Executed successfully' }],
-          nodeExecutionLogs: data.nodeExecutionLogs,
-          executionMode: 'flowise',
-          sourceDocuments: data.sourceDocuments,
-          agentReasoning: data.agentReasoning,
-        });
-      }
+      // 実行結果
+      setResult({
+        success: data.success,
+        output: data.output,
+        text: typeof data.output === 'string' ? data.output : JSON.stringify(data.output, null, 2),
+        executionTime: data.executionTime,
+        error: data.error,
+        logs: data.logs,
+        usedTools: data.usedTools || [{ tool: 'Flowise Backend', toolOutput: 'Executed successfully' }],
+        nodeExecutionLogs: data.nodeExecutionLogs,
+        executionMode: 'flowise',
+        sourceDocuments: data.sourceDocuments,
+        agentReasoning: data.agentReasoning,
+      });
     } catch (error) {
       const appError = parseError(error);
       setResult({
@@ -436,9 +282,7 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
         error: getUserFriendlyMessage(appError, 'フローの実行に失敗しました'),
       });
     } finally {
-      if (!pendingReview) {
-        setIsRunning(false);
-      }
+      setIsRunning(false);
     }
   };
 
@@ -447,9 +291,6 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
     setResult(null);
     setTabValue(0);
     setExpandedOwlAgents(new Map());
-    setPendingReview(null);
-    setExecutionContext(null);
-    setShowReviewModal(false);
     onClose();
   };
 
@@ -551,24 +392,22 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
               severity={validation.valid ? 'success' : 'error'}
               sx={{
                 bgcolor: validation.valid ? 'rgba(76, 175, 80, 0.1)' : 'rgba(244, 67, 54, 0.1)',
-                color: '#fff',
-                '& .MuiAlert-icon': {
-                  color: validation.valid ? '#4CAF50' : '#f44336',
-                },
+                color: validation.valid ? '#4CAF50' : '#f44336',
+                '& .MuiAlert-icon': { color: validation.valid ? '#4CAF50' : '#f44336' },
               }}
             >
               {validation.valid
-                ? 'フローはFlowise実行の準備ができています'
-                : 'フローにエラーがあります。修正してください。'}
+                ? 'Flow validation passed'
+                : `Found ${validation.errors.length} error(s)`}
             </Alert>
           </Box>
 
           {validation.errors.length > 0 && (
             <Box sx={{ mb: 2 }}>
-              <Typography sx={{ color: '#f44336', fontWeight: 600, mb: 1 }}>
-                Errors ({validation.errors.length})
+              <Typography sx={{ color: '#f44336', mb: 1, fontSize: '0.85rem', fontWeight: 600 }}>
+                Errors:
               </Typography>
-              <List dense>
+              <List dense sx={{ bgcolor: '#252536', borderRadius: 1, p: 1 }}>
                 {validation.errors.map((error, index) => (
                   <ListItem key={index} sx={{ py: 0.5 }}>
                     <ListItemIcon sx={{ minWidth: 32 }}>
@@ -576,7 +415,7 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
                     </ListItemIcon>
                     <ListItemText
                       primary={error}
-                      primaryTypographyProps={{ sx: { color: '#fff', fontSize: '0.9rem' } }}
+                      primaryTypographyProps={{ sx: { color: '#fff', fontSize: '0.85rem' } }}
                     />
                   </ListItem>
                 ))}
@@ -585,11 +424,11 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
           )}
 
           {validation.warnings.length > 0 && (
-            <Box>
-              <Typography sx={{ color: '#ff9800', fontWeight: 600, mb: 1 }}>
-                Warnings ({validation.warnings.length})
+            <Box sx={{ mb: 2 }}>
+              <Typography sx={{ color: '#ff9800', mb: 1, fontSize: '0.85rem', fontWeight: 600 }}>
+                Warnings:
               </Typography>
-              <List dense>
+              <List dense sx={{ bgcolor: '#252536', borderRadius: 1, p: 1 }}>
                 {validation.warnings.map((warning, index) => (
                   <ListItem key={index} sx={{ py: 0.5 }}>
                     <ListItemIcon sx={{ minWidth: 32 }}>
@@ -597,7 +436,7 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
                     </ListItemIcon>
                     <ListItemText
                       primary={warning}
-                      primaryTypographyProps={{ sx: { color: '#fff', fontSize: '0.9rem' } }}
+                      primaryTypographyProps={{ sx: { color: '#fff', fontSize: '0.85rem' } }}
                     />
                   </ListItem>
                 ))}
@@ -606,97 +445,62 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
           )}
 
           <Box sx={{ mt: 2 }}>
-            <Typography sx={{ color: '#888', fontSize: '0.85rem', mb: 1 }}>
-              Flow Summary
+            <Typography sx={{ color: '#888', fontSize: '0.85rem' }}>
+              Nodes: {nodes.length} | Edges: {edges.length}
             </Typography>
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              <Chip
-                label={`${nodes.length} Nodes`}
-                size="small"
-                sx={{ bgcolor: '#252536', color: '#fff' }}
-              />
-              <Chip
-                label={`${edges.length} Connections`}
-                size="small"
-                sx={{ bgcolor: '#252536', color: '#fff' }}
-              />
-            </Box>
           </Box>
         </TabPanel>
 
         {/* Flow Data Tab */}
         <TabPanel value={tabValue} index={1}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-            <Typography sx={{ color: '#888', fontSize: '0.85rem' }}>
-              Flowise-Compatible Flow Data (JSON)
+          <Box sx={{ mb: 2 }}>
+            <Typography sx={{ color: '#888', fontSize: '0.85rem', mb: 1 }}>
+              Flowise Compatible Flow Data (JSON)
             </Typography>
             {isLoadingAgents && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                 <CircularProgress size={14} sx={{ color: '#6366f1' }} />
                 <Typography sx={{ color: '#6366f1', fontSize: '0.75rem' }}>
-                  OwlAgent情報を読み込み中...
+                  Loading OwlAgent details...
                 </Typography>
               </Box>
             )}
+            <Paper
+              sx={{
+                bgcolor: '#252536',
+                border: '1px solid #3d3d54',
+                borderRadius: 1,
+                p: 2,
+                maxHeight: 400,
+                overflow: 'auto',
+              }}
+            >
+              <pre
+                style={{
+                  color: '#8be9fd',
+                  fontSize: '0.75rem',
+                  margin: 0,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-all',
+                }}
+              >
+                {flowiseDataJson}
+              </pre>
+            </Paper>
           </Box>
-
-          {/* OwlAgentノードがある場合の情報表示 */}
-          {owlAgentNodes.length > 0 && (
-            <Alert
-              severity="info"
-              sx={{
-                mb: 2,
-                bgcolor: '#1a2744',
-                color: '#90caf9',
-                '& .MuiAlert-icon': { color: '#90caf9' },
-              }}
-            >
-              <Typography sx={{ fontSize: '0.8rem' }}>
-                このフローには {owlAgentNodes.length} 個のOwlAgentノードが含まれています。
-                {expandedOwlAgents.size > 0 &&
-                  ` 内部フロー情報は「expandedOwlAgents」セクションに展開されています。`}
-              </Typography>
-            </Alert>
-          )}
-
-          <Paper
-            sx={{
-              bgcolor: '#252536',
-              border: '1px solid #3d3d54',
-              borderRadius: 1,
-              p: 2,
-              maxHeight: 400,
-              overflow: 'auto',
-            }}
-          >
-            <Typography
-              component="pre"
-              sx={{
-                fontFamily: 'monospace',
-                fontSize: '0.75rem',
-                color: '#aaa',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all',
-                m: 0,
-              }}
-            >
-              {flowiseDataJson}
-            </Typography>
-          </Paper>
         </TabPanel>
 
         {/* Execute Tab */}
         <TabPanel value={tabValue} index={2}>
-          {/* 入力 */}
-          <Box sx={{ mb: 3 }}>
+          <Box sx={{ mb: 2 }}>
             <Typography sx={{ color: '#888', fontSize: '0.85rem', mb: 1 }}>
               Test Input
             </Typography>
             <TextField
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
               fullWidth
               multiline
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
               rows={3}
               placeholder="Enter your test message..."
               disabled={isRunning}
@@ -715,51 +519,12 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
           </Box>
 
           {/* 実行中 */}
-          {isRunning && !pendingReview && (
+          {isRunning && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
               <CircularProgress size={24} sx={{ color: '#4CAF50' }} />
               <Typography sx={{ color: '#aaa' }}>
                 Flowiseバックエンドでフローを実行中...
               </Typography>
-            </Box>
-          )}
-
-          {/* Human Review 待機中 */}
-          {pendingReview && (
-            <Box
-              sx={{
-                p: 2,
-                mb: 2,
-                bgcolor: 'rgba(255, 215, 0, 0.1)',
-                border: '2px solid #FFD700',
-                borderRadius: 2,
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <PersonIcon sx={{ color: '#FFD700' }} />
-                <Typography sx={{ color: '#FFD700', fontWeight: 600 }}>
-                  人間による確認を待っています
-                </Typography>
-              </Box>
-              <Typography sx={{ color: '#aaa', fontSize: '0.85rem', mb: 1 }}>
-                ノード: {pendingReview.nodeName || pendingReview.nodeId}
-              </Typography>
-              <Typography sx={{ color: '#888', fontSize: '0.8rem' }}>
-                {pendingReview.message || '出力内容を確認してください'}
-              </Typography>
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={() => setShowReviewModal(true)}
-                sx={{
-                  mt: 1,
-                  color: '#FFD700',
-                  borderColor: '#FFD700',
-                  '&:hover': { borderColor: '#FFD700', bgcolor: 'rgba(255, 215, 0, 0.1)' },
-                }}
-              >
-                レビューを開く
-              </Button>
             </Box>
           )}
 
@@ -779,20 +544,18 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
                   }}
                 />
                 {/* 実行モード表示 */}
-                {result.executionMode && (
-                  <Chip
-                    icon={<CloudIcon sx={{ fontSize: 12 }} />}
-                    label="Flowise"
-                    size="small"
-                    sx={{
-                      bgcolor: '#2E7D32',
-                      color: '#fff',
-                      height: 20,
-                      fontSize: '0.65rem',
-                      '& .MuiChip-icon': { color: '#fff' },
-                    }}
-                  />
-                )}
+                <Chip
+                  icon={<CloudIcon sx={{ fontSize: 12 }} />}
+                  label="Flowise"
+                  size="small"
+                  sx={{
+                    bgcolor: '#2E7D32',
+                    color: '#fff',
+                    height: 20,
+                    fontSize: '0.65rem',
+                    '& .MuiChip-icon': { color: '#fff' },
+                  }}
+                />
                 {result.executionTime && (
                   <Typography sx={{ color: '#888', fontSize: '0.75rem' }}>
                     {result.executionTime}ms
@@ -864,7 +627,6 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
                           borderLeft: `3px solid ${
                             log.status === 'success' ? '#4CAF50' :
                             log.status === 'error' ? '#f44336' :
-                            log.status === 'pending_review' ? '#FFD700' :
                             log.status === 'skipped' ? '#9E9E9E' : '#888'
                           }`,
                           mb: 0.5,
@@ -887,7 +649,6 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
                             />
                             {log.status === 'success' && <CheckCircleIcon sx={{ color: '#4CAF50', fontSize: 16 }} />}
                             {log.status === 'error' && <ErrorIcon sx={{ color: '#f44336', fontSize: 16 }} />}
-                            {log.status === 'pending_review' && <PauseCircleIcon sx={{ color: '#FFD700', fontSize: 16 }} />}
                             {log.status === 'skipped' && <SkipNextIcon sx={{ color: '#9E9E9E', fontSize: 16 }} />}
                             <Typography sx={{ fontSize: '0.8rem', fontWeight: 600 }}>
                               {log.nodeName}
@@ -902,83 +663,65 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
                                 fontSize: '0.6rem',
                               }}
                             />
-                            <Typography sx={{ fontSize: '0.7rem', color: '#888', ml: 'auto', mr: 1 }}>
+                            <Typography sx={{ color: '#888', fontSize: '0.7rem', ml: 'auto' }}>
                               {log.executionTime}ms
                             </Typography>
                           </Box>
                         </AccordionSummary>
                         <AccordionDetails sx={{ pt: 0 }}>
-                          {/* Inputs */}
-                          <Box sx={{ mb: 2 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                              <InputIcon sx={{ color: '#90CAF9', fontSize: 14 }} />
-                              <Typography sx={{ fontSize: '0.75rem', color: '#90CAF9', fontWeight: 600 }}>
-                                Inputs
-                              </Typography>
-                            </Box>
-                            <Paper
-                              sx={{
-                                bgcolor: '#252536',
-                                p: 1,
-                                borderRadius: 1,
-                                maxHeight: 150,
-                                overflow: 'auto',
-                              }}
-                            >
-                              <Typography
-                                component="pre"
+                          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                            <Box sx={{ flex: 1, minWidth: 200 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                                <InputIcon sx={{ fontSize: 14, color: '#888' }} />
+                                <Typography sx={{ color: '#888', fontSize: '0.7rem' }}>
+                                  Inputs
+                                </Typography>
+                              </Box>
+                              <Paper
                                 sx={{
-                                  fontFamily: 'monospace',
-                                  fontSize: '0.7rem',
-                                  color: '#aaa',
-                                  whiteSpace: 'pre-wrap',
-                                  wordBreak: 'break-all',
-                                  m: 0,
+                                  bgcolor: '#252536',
+                                  p: 1,
+                                  borderRadius: 1,
+                                  maxHeight: 100,
+                                  overflow: 'auto',
                                 }}
                               >
-                                {Object.keys(log.inputs).length > 0
-                                  ? JSON.stringify(log.inputs, null, 2)
-                                  : '(no inputs)'}
-                              </Typography>
-                            </Paper>
-                          </Box>
-
-                          {/* Output */}
-                          <Box>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                              <OutputIcon sx={{ color: '#A5D6A7', fontSize: 14 }} />
-                              <Typography sx={{ fontSize: '0.75rem', color: '#A5D6A7', fontWeight: 600 }}>
-                                Output
-                              </Typography>
+                                <pre style={{ color: '#8be9fd', fontSize: '0.65rem', margin: 0 }}>
+                                  {JSON.stringify(log.inputs, null, 2)}
+                                </pre>
+                              </Paper>
                             </Box>
-                            <Paper
-                              sx={{
-                                bgcolor: '#252536',
-                                p: 1,
-                                borderRadius: 1,
-                                maxHeight: 200,
-                                overflow: 'auto',
-                              }}
-                            >
-                              <Typography
-                                component="pre"
+                            <Box sx={{ flex: 1, minWidth: 200 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                                <OutputIcon sx={{ fontSize: 14, color: '#888' }} />
+                                <Typography sx={{ color: '#888', fontSize: '0.7rem' }}>
+                                  Output
+                                </Typography>
+                              </Box>
+                              <Paper
                                 sx={{
-                                  fontFamily: 'monospace',
-                                  fontSize: '0.7rem',
-                                  color: log.status === 'error' ? '#f44336' : '#aaa',
-                                  whiteSpace: 'pre-wrap',
-                                  wordBreak: 'break-all',
-                                  m: 0,
+                                  bgcolor: '#252536',
+                                  p: 1,
+                                  borderRadius: 1,
+                                  maxHeight: 100,
+                                  overflow: 'auto',
                                 }}
                               >
-                                {log.error
-                                  ? `Error: ${log.error}`
-                                  : log.output !== null && log.output !== undefined
-                                  ? (typeof log.output === 'string' ? log.output : JSON.stringify(log.output, null, 2))
-                                  : '(no output)'}
-                              </Typography>
-                            </Paper>
+                                <pre style={{ color: '#50fa7b', fontSize: '0.65rem', margin: 0 }}>
+                                  {typeof log.output === 'string'
+                                    ? log.output
+                                    : JSON.stringify(log.output, null, 2)}
+                                </pre>
+                              </Paper>
+                            </Box>
                           </Box>
+                          {log.error && (
+                            <Box sx={{ mt: 1 }}>
+                              <Typography sx={{ color: '#f44336', fontSize: '0.75rem' }}>
+                                Error: {log.error}
+                              </Typography>
+                            </Box>
+                          )}
                         </AccordionDetails>
                       </Accordion>
                     ))}
@@ -998,43 +741,39 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
                 >
                   <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#888' }} />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <DescriptionIcon sx={{ color: '#888', fontSize: 18 }} />
+                      <DescriptionIcon sx={{ color: '#6366f1', fontSize: 18 }} />
                       <Typography sx={{ fontSize: '0.85rem' }}>
                         Source Documents ({result.sourceDocuments.length})
                       </Typography>
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails>
-                    {result.sourceDocuments.map((doc, index) => (
-                      <Box
+                    {result.sourceDocuments.map((doc: any, index: number) => (
+                      <Paper
                         key={index}
                         sx={{
-                          p: 1,
-                          mb: 1,
                           bgcolor: '#1e1e2f',
+                          p: 1.5,
+                          mb: 1,
                           borderRadius: 1,
                         }}
                       >
-                        <Typography
-                          sx={{ fontSize: '0.8rem', color: '#aaa', whiteSpace: 'pre-wrap' }}
-                        >
-                          {doc.pageContent || JSON.stringify(doc, null, 2)}
+                        <Typography sx={{ color: '#888', fontSize: '0.7rem', mb: 0.5 }}>
+                          Source: {doc.metadata?.source || 'Unknown'}
                         </Typography>
-                        {doc.metadata && (
-                          <Typography sx={{ fontSize: '0.7rem', color: '#666', mt: 0.5 }}>
-                            Source: {doc.metadata.source || 'Unknown'}
-                          </Typography>
-                        )}
-                      </Box>
+                        <Typography sx={{ color: '#fff', fontSize: '0.8rem' }}>
+                          {doc.pageContent?.substring(0, 200)}
+                          {doc.pageContent?.length > 200 ? '...' : ''}
+                        </Typography>
+                      </Paper>
                     ))}
                   </AccordionDetails>
                 </Accordion>
               )}
 
-              {/* Agent Reasoning (Flowise) */}
+              {/* Agent Reasoning */}
               {result.agentReasoning && result.agentReasoning.length > 0 && (
                 <Accordion
-                  defaultExpanded
                   sx={{
                     bgcolor: '#252536',
                     color: '#fff',
@@ -1044,52 +783,31 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
                 >
                   <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#888' }} />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CloudIcon sx={{ color: '#4CAF50', fontSize: 18 }} />
+                      <TimelineIcon sx={{ color: '#6366f1', fontSize: 18 }} />
                       <Typography sx={{ fontSize: '0.85rem' }}>
                         Agent Reasoning ({result.agentReasoning.length} steps)
                       </Typography>
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails>
-                    {result.agentReasoning.map((reasoning: any, index: number) => (
-                      <Box
+                    {result.agentReasoning.map((step: any, index: number) => (
+                      <Paper
                         key={index}
                         sx={{
+                          bgcolor: '#1e1e2f',
                           p: 1.5,
                           mb: 1,
-                          bgcolor: '#1e1e2f',
                           borderRadius: 1,
-                          borderLeft: '3px solid #4CAF50',
+                          borderLeft: '3px solid #6366f1',
                         }}
                       >
-                        {reasoning.agentName && (
-                          <Typography sx={{ fontSize: '0.85rem', color: '#4CAF50', fontWeight: 600, mb: 0.5 }}>
-                            {reasoning.agentName}
-                          </Typography>
-                        )}
-                        {reasoning.instructions && (
-                          <Typography sx={{ fontSize: '0.75rem', color: '#888', mb: 0.5 }}>
-                            Instructions: {reasoning.instructions}
-                          </Typography>
-                        )}
-                        {reasoning.messages && reasoning.messages.length > 0 && (
-                          <Box sx={{ mt: 0.5 }}>
-                            {reasoning.messages.map((msg: string, msgIndex: number) => (
-                              <Typography
-                                key={msgIndex}
-                                sx={{ fontSize: '0.8rem', color: '#aaa', whiteSpace: 'pre-wrap' }}
-                              >
-                                {msg}
-                              </Typography>
-                            ))}
-                          </Box>
-                        )}
-                        {reasoning.next && (
-                          <Typography sx={{ fontSize: '0.7rem', color: '#666', mt: 0.5 }}>
-                            Next: {reasoning.next}
-                          </Typography>
-                        )}
-                      </Box>
+                        <Typography sx={{ color: '#6366f1', fontSize: '0.75rem', mb: 0.5 }}>
+                          Step {index + 1}
+                        </Typography>
+                        <Typography sx={{ color: '#fff', fontSize: '0.8rem', whiteSpace: 'pre-wrap' }}>
+                          {typeof step === 'string' ? step : JSON.stringify(step, null, 2)}
+                        </Typography>
+                      </Paper>
                     ))}
                   </AccordionDetails>
                 </Accordion>
@@ -1107,52 +825,37 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
                 >
                   <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#888' }} />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <BuildIcon sx={{ color: '#888', fontSize: 18 }} />
+                      <BuildIcon sx={{ color: '#6366f1', fontSize: 18 }} />
                       <Typography sx={{ fontSize: '0.85rem' }}>
                         Used Tools ({result.usedTools.length})
                       </Typography>
                     </Box>
                   </AccordionSummary>
                   <AccordionDetails>
-                    {result.usedTools.map((tool, index) => (
-                      <Box
+                    {result.usedTools.map((tool: any, index: number) => (
+                      <Paper
                         key={index}
                         sx={{
-                          p: 1,
-                          mb: 1,
                           bgcolor: '#1e1e2f',
+                          p: 1.5,
+                          mb: 1,
                           borderRadius: 1,
                         }}
                       >
-                        <Typography sx={{ fontSize: '0.85rem', color: '#fff', fontWeight: 600 }}>
-                          {tool.tool || tool.name || 'Unknown Tool'}
+                        <Typography sx={{ color: '#6366f1', fontSize: '0.75rem', mb: 0.5 }}>
+                          {tool.tool}
                         </Typography>
-                        {tool.toolInput && (
-                          <Typography
-                            sx={{ fontSize: '0.75rem', color: '#888', fontFamily: 'monospace' }}
-                          >
-                            Input: {JSON.stringify(tool.toolInput)}
-                          </Typography>
-                        )}
-                        {tool.toolOutput && (
-                          <Typography
-                            sx={{
-                              fontSize: '0.75rem',
-                              color: '#aaa',
-                              mt: 0.5,
-                              whiteSpace: 'pre-wrap',
-                            }}
-                          >
-                            Output: {tool.toolOutput}
-                          </Typography>
-                        )}
-                      </Box>
+                        <Typography sx={{ color: '#fff', fontSize: '0.8rem' }}>
+                          {tool.toolOutput?.substring(0, 200) || 'No output'}
+                          {tool.toolOutput?.length > 200 ? '...' : ''}
+                        </Typography>
+                      </Paper>
                     ))}
                   </AccordionDetails>
                 </Accordion>
               )}
 
-              {/* Full Response */}
+              {/* Full Response (Debug) */}
               <Accordion
                 sx={{
                   bgcolor: '#252536',
@@ -1162,22 +865,27 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
                 }}
               >
                 <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#888' }} />}>
-                  <Typography sx={{ fontSize: '0.85rem' }}>Full Response (JSON)</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <DataObjectIcon sx={{ color: '#888', fontSize: 18 }} />
+                    <Typography sx={{ fontSize: '0.85rem', color: '#888' }}>
+                      Full Response (Debug)
+                    </Typography>
+                  </Box>
                 </AccordionSummary>
                 <AccordionDetails>
-                  <Typography
-                    component="pre"
+                  <Paper
                     sx={{
-                      fontFamily: 'monospace',
-                      fontSize: '0.75rem',
-                      color: '#aaa',
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-all',
-                      m: 0,
+                      bgcolor: '#1e1e2f',
+                      p: 1.5,
+                      borderRadius: 1,
+                      maxHeight: 200,
+                      overflow: 'auto',
                     }}
                   >
-                    {JSON.stringify(result.output, null, 2)}
-                  </Typography>
+                    <pre style={{ color: '#8be9fd', fontSize: '0.7rem', margin: 0 }}>
+                      {JSON.stringify(result, null, 2)}
+                    </pre>
+                  </Paper>
                 </AccordionDetails>
               </Accordion>
             </Box>
@@ -1211,26 +919,6 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
           {isRunning ? 'Running...' : 'Run Test'}
         </Button>
       </DialogActions>
-
-      {/* Human Review Modal */}
-      <HumanReviewModal
-        open={showReviewModal}
-        pendingReview={pendingReview}
-        onDecision={handleReviewDecision}
-        onClose={() => {
-          setShowReviewModal(false);
-          // レビューモーダルを閉じても実行は継続しない
-          if (pendingReview) {
-            setResult({
-              success: false,
-              error: '人間による確認がキャンセルされました',
-            });
-            setPendingReview(null);
-            setExecutionContext(null);
-            setIsRunning(false);
-          }
-        }}
-      />
     </Dialog>
   );
 }

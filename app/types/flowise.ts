@@ -197,33 +197,10 @@ export interface ChatSession {
   updatedAt: Date;
 }
 
-// ============================================
-// Human Review Configuration (OwliaFabrica specific)
-// ============================================
-
-export interface HumanReviewConfig {
-  enabled: boolean;
-  requiresApproval: boolean;
-  approvalMessage?: string;
-  timeoutSeconds?: number;
-  allowEdit?: boolean;
-}
-
 export interface NodeConfig {
   id: string;
   type: string;
   data: any;
-  humanReview?: HumanReviewConfig;
-}
-
-export interface ReviewStatus {
-  nodeId: string;
-  status: 'pending' | 'approved' | 'rejected' | 'edited';
-  reviewedAt?: Date;
-  reviewedBy?: string;
-  originalOutput?: any;
-  editedOutput?: any;
-  comments?: string;
 }
 
 // ============================================

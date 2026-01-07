@@ -42,14 +42,6 @@ export interface ReactFlowNodeData {
     outputAnchors?: FlowiseOutputAnchor[];
     [key: string]: any;
   };
-  // Human Review設定（OwliaFabrica独自）
-  humanReview?: {
-    enabled: boolean;
-    requiresApproval: boolean;
-    approvalMessage?: string;
-    timeoutSeconds?: number;
-    allowEdit?: boolean;
-  };
 }
 
 /**

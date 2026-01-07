@@ -4,7 +4,6 @@ import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { Box, Typography, IconButton, Tooltip, Chip } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
-import PersonIcon from '@mui/icons-material/Person';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { getNodeDefinition, NodeHandle } from '../types/node-definitions';
 
@@ -13,13 +12,6 @@ export interface CustomNodeData {
   type: string;
   category: string;
   config?: Record<string, any>;
-  humanReview?: {
-    enabled: boolean;
-    requiresApproval?: boolean;
-    approvalMessage?: string;
-    timeoutSeconds?: number;
-    allowEdit?: boolean;
-  };
   agentId?: string; // OwlAgent参照用
   agentName?: string;
   // コールバック（dataに含める）
@@ -150,11 +142,6 @@ function CustomNode({ id, data, selected }: NodeProps<CustomNodeData>) {
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          {data.humanReview?.enabled && (
-            <Tooltip title="Human Review Enabled">
-              <PersonIcon sx={{ fontSize: 16, color: '#FFD700' }} />
-            </Tooltip>
-          )}
           <Tooltip title="Configure">
             <IconButton
               size="small"

@@ -34,7 +34,6 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import KeyIcon from '@mui/icons-material/Key';
 import SettingsIcon from '@mui/icons-material/Settings';
 import LinkIcon from '@mui/icons-material/Link';
-import PersonIcon from '@mui/icons-material/Person';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import MinimizeIcon from '@mui/icons-material/Minimize';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
@@ -54,7 +53,7 @@ interface FloatingConfigPanelProps {
   nodeData: CustomNodeData;
   position: { x: number; y: number };
   onClose: () => void;
-  onSave: (nodeId: string, config: Record<string, any>, humanReview?: CustomNodeData['humanReview']) => void;
+  onSave: (nodeId: string, config: Record<string, any>) => void;
   savedOwlAgents?: SavedOwlAgent[];
 }
 
@@ -108,13 +107,6 @@ export default function FloatingConfigPanel({
 }: FloatingConfigPanelProps) {
   const { colors } = useTheme();
   const [config, setConfig] = useState<Record<string, any>>(nodeData.config || {});
-  const [humanReview, setHumanReview] = useState(nodeData.humanReview || {
-    enabled: false,
-    requiresApproval: true,
-    approvalMessage: '',
-    timeoutSeconds: 0,
-    allowEdit: true,
-  });
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [panelPosition, setPanelPosition] = useState(position);
   const [isDragging, setIsDragging] = useState(false);
@@ -136,13 +128,6 @@ export default function FloatingConfigPanel({
 
   useEffect(() => {
     setConfig(nodeData.config || {});
-    setHumanReview(nodeData.humanReview || {
-      enabled: false,
-      requiresApproval: true,
-      approvalMessage: '',
-      timeoutSeconds: 0,
-      allowEdit: true,
-    });
   }, [nodeId, nodeData]);
 
   // ドラッグ処理
@@ -186,12 +171,8 @@ export default function FloatingConfigPanel({
     setConfig((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleHumanReviewChange = (field: string, value: any) => {
-    setHumanReview((prev) => ({ ...prev, [field]: value }));
-  };
-
   const handleSave = () => {
-    onSave(nodeId, config, humanReview);
+    onSave(nodeId, config);
     onClose();
   };
 
@@ -462,7 +443,6 @@ export default function FloatingConfigPanel({
             <Tab label="Basic" />
             {isLLMNode && <Tab label="Tools" />}
             <Tab label="Advanced" />
-            <Tab label="Review" />
           </Tabs>
 
           {/* コンテンツ */}
@@ -513,73 +493,6 @@ export default function FloatingConfigPanel({
                   <Typography sx={{ color: colors.text.tertiary, fontSize: '0.85rem', textAlign: 'center', py: 2 }}>
                     No advanced settings available
                   </Typography>
-                )}
-              </Box>
-            )}
-
-            {/* Review タブ (LLMノード: インデックス 3, その他: インデックス 2) */}
-            {activeTab === (isLLMNode ? 3 : 2) && (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      size="small"
-                      checked={humanReview.enabled}
-                      onChange={(e) => handleHumanReviewChange('enabled', e.target.checked)}
-                    />
-                  }
-                  label={
-                    <Typography sx={{ color: colors.text.primary, fontSize: '0.85rem' }}>
-                      Enable Human Review
-                    </Typography>
-                  }
-                />
-                {humanReview.enabled && (
-                  <>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          size="small"
-                          checked={humanReview.allowEdit}
-                          onChange={(e) => handleHumanReviewChange('allowEdit', e.target.checked)}
-                        />
-                      }
-                      label={
-                        <Typography sx={{ color: colors.text.primary, fontSize: '0.85rem' }}>
-                          Allow Edit
-                        </Typography>
-                      }
-                    />
-                    <TextField
-                      label="Approval Message"
-                      value={humanReview.approvalMessage || ''}
-                      onChange={(e) => handleHumanReviewChange('approvalMessage', e.target.value)}
-                      fullWidth
-                      size="small"
-                      placeholder="Please review..."
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          color: colors.text.primary,
-                          fontSize: '0.85rem',
-                        },
-                      }}
-                    />
-                    <TextField
-                      label="Auto-approve Timeout (seconds)"
-                      type="number"
-                      value={humanReview.timeoutSeconds || 0}
-                      onChange={(e) => handleHumanReviewChange('timeoutSeconds', Math.max(0, Number(e.target.value)))}
-                      fullWidth
-                      size="small"
-                      inputProps={{ min: 0 }}
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          color: colors.text.primary,
-                          fontSize: '0.85rem',
-                        },
-                      }}
-                    />
-                  </>
                 )}
               </Box>
             )}
