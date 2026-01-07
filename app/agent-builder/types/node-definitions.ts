@@ -1,23 +1,28 @@
 // ============================================
-// ノード定義ファイル
-// エージェント作成画面で使用する全ノードタイプの定義
+// ノード定義ファイル (Flowise互換版)
+// Flowiseバックエンドで実行可能なノードのみ定義
 // ============================================
 
 // ノードカテゴリ
 export type NodeCategory =
-  | 'flowControl'
   | 'chatModels'
+  | 'llms'
+  | 'embeddings'
   | 'vectorStores'
   | 'documentLoaders'
-  | 'memory'
+  | 'textSplitters'
   | 'tools'
-  | 'owlAgent';
+  | 'agents'
+  | 'chains'
+  | 'memory'
+  | 'prompts'
+  | 'outputParsers';
 
 // ノードの入力パラメータ定義
 export interface NodeInputParam {
   name: string;
   label: string;
-  type: 'string' | 'number' | 'boolean' | 'select' | 'password' | 'text' | 'json' | 'file' | 'agentMultiSelect' | 'builtinToolSelect';
+  type: 'string' | 'number' | 'boolean' | 'select' | 'password' | 'text' | 'json' | 'file';
   default?: any;
   placeholder?: string;
   description?: string;
@@ -59,251 +64,271 @@ export interface CategoryDefinition {
 }
 
 // ============================================
-// カテゴリ定義
+// カテゴリ定義 (Flowise互換)
 // ============================================
 export const NODE_CATEGORIES: CategoryDefinition[] = [
-  { id: 'flowControl', label: 'Flow Control', icon: '🎯', color: '#8BC34A' },
   { id: 'chatModels', label: 'Chat Models', icon: '💬', color: '#4CAF50' },
-  { id: 'vectorStores', label: 'Vector Stores', icon: '📚', color: '#9C27B0' },
-  { id: 'documentLoaders', label: 'Document Loaders', icon: '📄', color: '#FF9800' },
-  { id: 'memory', label: 'Memory', icon: '🧠', color: '#E91E63' },
+  { id: 'llms', label: 'LLMs', icon: '🧠', color: '#8BC34A' },
+  { id: 'embeddings', label: 'Embeddings', icon: '📊', color: '#00BCD4' },
+  { id: 'vectorStores', label: 'Vector Stores', icon: '🗄️', color: '#9C27B0' },
+  { id: 'documentLoaders', label: 'Document Loaders', icon: '📄', color: '#FF5722' },
+  { id: 'textSplitters', label: 'Text Splitters', icon: '✂️', color: '#795548' },
   { id: 'tools', label: 'Tools', icon: '🔧', color: '#607D8B' },
-  { id: 'owlAgent', label: 'OwlAgent', icon: '🦉', color: '#FF5722' },
+  { id: 'agents', label: 'Agents', icon: '🤖', color: '#E91E63' },
+  { id: 'chains', label: 'Chains', icon: '🔗', color: '#2196F3' },
+  { id: 'memory', label: 'Memory', icon: '💾', color: '#673AB7' },
+  { id: 'prompts', label: 'Prompts', icon: '📝', color: '#FF9800' },
+  { id: 'outputParsers', label: 'Output Parsers', icon: '📤', color: '#009688' },
 ];
 
 // ============================================
-// Flow Control (Start/End)
+// Chat Models (Flowise互換)
 // ============================================
-export const FLOW_CONTROL_NODES: NodeTypeDefinition[] = [
+export const CHAT_MODEL_NODES: NodeTypeDefinition[] = [
   {
-    type: 'start',
-    label: 'Start',
-    category: 'flowControl',
-    icon: '▶️',
-    description: 'フローの開始地点。ユーザー入力を受け取り、後続のノードに渡します。',
-    color: '#8BC34A',
+    type: 'chatOpenAI',
+    label: 'ChatOpenAI',
+    category: 'chatModels',
+    icon: '🤖',
+    description: 'OpenAI GPTモデルを使用したチャット。GPT-4、GPT-3.5などをサポート。',
+    color: '#10A37F',
     inputs: [
-      { name: 'inputLabel', label: 'Input Label', type: 'string', default: 'question', description: '入力フィールドのラベル' },
-      { name: 'inputPlaceholder', label: 'Placeholder', type: 'string', default: 'Enter your question...', description: '入力フィールドのプレースホルダー' },
-      { name: 'inputType', label: 'Input Type', type: 'select', default: 'text', description: '入力の種類', options: [
-        { label: 'Text', value: 'text' },
-        { label: 'Textarea', value: 'textarea' },
-        { label: 'File Upload', value: 'file' },
+      { name: 'modelName', label: 'Model Name', type: 'select', default: 'gpt-3.5-turbo', options: [
+        { label: 'GPT-4o', value: 'gpt-4o' },
+        { label: 'GPT-4o Mini', value: 'gpt-4o-mini' },
+        { label: 'GPT-4 Turbo', value: 'gpt-4-turbo' },
+        { label: 'GPT-4', value: 'gpt-4' },
+        { label: 'GPT-3.5 Turbo', value: 'gpt-3.5-turbo' },
       ]},
+      { name: 'temperature', label: 'Temperature', type: 'number', default: 0.7, min: 0, max: 2, step: 0.1 },
+      { name: 'maxTokens', label: 'Max Tokens', type: 'number', default: 2000 },
+      { name: 'openAIApiKey', label: 'OpenAI API Key', type: 'password', description: '環境変数OPENAI_API_KEYから自動取得' },
     ],
     inputHandles: [],
     outputHandles: [
-      { id: 'output', label: 'Output', type: 'any', position: 'right' },
+      { id: 'output', label: 'ChatOpenAI', type: 'BaseChatModel', position: 'right' },
     ],
   },
-  {
-    type: 'end',
-    label: 'End',
-    category: 'flowControl',
-    icon: '⏹️',
-    description: 'フローの終了地点。最終結果を出力します。',
-    color: '#F44336',
-    inputs: [
-      { name: 'outputFormat', label: 'Output Format', type: 'select', default: 'text', description: '出力のフォーマット', options: [
-        { label: 'Text', value: 'text' },
-        { label: 'JSON', value: 'json' },
-        { label: 'Markdown', value: 'markdown' },
-      ]},
-      { name: 'successMessage', label: 'Success Message', type: 'string', placeholder: 'Flow completed successfully', description: '成功時のメッセージ' },
-    ],
-    inputHandles: [
-      { id: 'input', label: 'Input', type: 'any', position: 'left' },
-    ],
-    outputHandles: [],
-  },
-  {
-    type: 'condition',
-    label: 'Condition',
-    category: 'flowControl',
-    icon: '🔀',
-    description: '条件分岐。条件に基づいて異なる経路にフローを振り分けます。',
-    color: '#FF9800',
-    inputs: [
-      { name: 'conditionType', label: 'Condition Type', type: 'select', default: 'contains', description: '条件の種類', options: [
-        { label: 'Contains', value: 'contains' },
-        { label: 'Equals', value: 'equals' },
-        { label: 'Starts With', value: 'startsWith' },
-        { label: 'Ends With', value: 'endsWith' },
-        { label: 'Regex Match', value: 'regex' },
-        { label: 'Is Empty', value: 'isEmpty' },
-        { label: 'Custom JavaScript', value: 'custom' },
-      ]},
-      { name: 'conditionValue', label: 'Condition Value', type: 'string', description: '比較する値またはパターン' },
-      { name: 'customCode', label: 'Custom Code', type: 'text', placeholder: 'return input.length > 10;', description: 'カスタム条件（JavaScriptコード）' },
-    ],
-    inputHandles: [
-      { id: 'input', label: 'Input', type: 'any', position: 'left' },
-    ],
-    outputHandles: [
-      { id: 'true', label: 'True', type: 'any', position: 'right' },
-      { id: 'false', label: 'False', type: 'any', position: 'right' },
-    ],
-  },
-  {
-    type: 'loop',
-    label: 'Loop',
-    category: 'flowControl',
-    icon: '🔄',
-    description: 'ループ処理。配列の各要素に対して処理を繰り返します。',
-    color: '#9C27B0',
-    inputs: [
-      { name: 'maxIterations', label: 'Max Iterations', type: 'number', default: 100, min: 1, max: 1000, description: '最大ループ回数' },
-      { name: 'itemVariable', label: 'Item Variable', type: 'string', default: 'item', description: '各要素を格納する変数名' },
-      { name: 'indexVariable', label: 'Index Variable', type: 'string', default: 'index', description: 'インデックスを格納する変数名' },
-    ],
-    inputHandles: [
-      { id: 'array', label: 'Array', type: 'any', position: 'left' },
-    ],
-    outputHandles: [
-      { id: 'item', label: 'Each Item', type: 'any', position: 'right' },
-      { id: 'complete', label: 'Complete', type: 'any', position: 'bottom' },
-    ],
-  },
-  {
-    type: 'humanReview',
-    label: 'Human Review',
-    category: 'flowControl',
-    icon: '👤',
-    description: '人間による確認・承認ポイント。AIの出力を人間が確認してから次へ進みます。',
-    color: '#FFD700',
-    inputs: [
-      { name: 'enabled', label: 'Enabled', type: 'boolean', default: true, description: '確認機能を有効にするか' },
-      { name: 'message', label: 'Review Message', type: 'string', placeholder: '確認してください', description: '確認時に表示するメッセージ' },
-      { name: 'allowEdit', label: 'Allow Edit', type: 'boolean', default: true, description: '編集を許可するか' },
-      { name: 'timeoutSeconds', label: 'Timeout (seconds)', type: 'number', default: 0, min: 0, description: '自動承認までの時間（0で無効）' },
-    ],
-    inputHandles: [
-      { id: 'input', label: 'Input', type: 'any', position: 'left' },
-    ],
-    outputHandles: [
-      { id: 'output', label: 'Output', type: 'any', position: 'right' },
-    ],
-  },
-];
-
-// ============================================
-// Chat Models
-// ============================================
-export const CHAT_MODEL_NODES: NodeTypeDefinition[] = [
   {
     type: 'azureChatOpenAI',
     label: 'Azure ChatOpenAI',
     category: 'chatModels',
-    icon: '💬',
-    description: 'Azure OpenAI Serviceを使用したチャットモデル。GPT-4、GPT-4o、GPT-3.5 Turboなどのモデルを利用可能。',
-    color: '#4CAF50',
+    icon: '☁️',
+    description: 'Azure OpenAI Serviceを使用。環境変数から認証情報を自動取得。',
+    color: '#0078D4',
     inputs: [
-      { name: 'deploymentName', label: 'Deployment Name', type: 'string', required: true, placeholder: 'gpt-4-deployment', description: 'Azure OpenAIでデプロイしたモデルの名前' },
-      { name: 'modelName', label: 'Model Name', type: 'select', required: true, default: 'gpt-4', description: '使用するモデルの種類', options: [
-        { label: 'GPT-4', value: 'gpt-4' },
-        { label: 'GPT-4 Turbo', value: 'gpt-4-turbo' },
-        { label: 'GPT-4o', value: 'gpt-4o' },
-        { label: 'GPT-4o mini', value: 'gpt-4o-mini' },
-        { label: 'GPT-3.5 Turbo', value: 'gpt-3.5-turbo' },
-      ]},
-      { name: 'systemMessage', label: 'System Message', type: 'text', placeholder: 'You are a helpful assistant...', description: 'AIの役割を定義するシステムメッセージ' },
-      { name: 'temperature', label: 'Temperature', type: 'number', default: 0.7, min: 0, max: 2, step: 0.1, description: '応答のランダム性。0は決定論的、2は最もランダム' },
-      { name: 'maxTokens', label: 'Max Tokens', type: 'number', default: 2000, min: 1, max: 128000, description: '生成する最大トークン数' },
-      { name: 'topP', label: 'Top P', type: 'number', default: 1, min: 0, max: 1, step: 0.1, description: '核サンプリング。確率質量の上位P%からサンプリング' },
-      { name: 'frequencyPenalty', label: 'Frequency Penalty', type: 'number', default: 0, min: 0, max: 2, step: 0.1, description: '頻度に基づくペナルティ。高いほど同じ単語の繰り返しを抑制' },
-      { name: 'presencePenalty', label: 'Presence Penalty', type: 'number', default: 0, min: 0, max: 2, step: 0.1, description: '存在に基づくペナルティ。高いほど新しいトピックへの言及を促進' },
-      { name: 'apiVersion', label: 'API Version', type: 'select', default: '2024-02-15-preview', description: 'Azure OpenAI APIのバージョン（※APIキーとエンドポイントは環境変数から自動取得）', options: [
-        { label: '2024-08-01-preview', value: '2024-08-01-preview' },
-        { label: '2024-05-01-preview', value: '2024-05-01-preview' },
-        { label: '2024-02-15-preview', value: '2024-02-15-preview' },
-        { label: '2023-12-01-preview', value: '2023-12-01-preview' },
-      ]},
-      { name: 'timeout', label: 'Timeout', type: 'number', default: 60000, min: 1000, max: 300000, description: 'リクエストのタイムアウト時間（ミリ秒）' },
-      // ツール設定
-      { name: 'enableTools', label: 'Enable Tools', type: 'boolean', default: false, description: 'ツール機能を有効にする' },
-      { name: 'builtinTools', label: 'Built-in Tools', type: 'builtinToolSelect', default: [], description: '使用する組み込みツールを選択' },
-      { name: 'toolAgents', label: 'OwlAgent Tools', type: 'agentMultiSelect', default: [], description: 'ツールとして使用するOwlAgentを選択（複数選択可）' },
-      { name: 'toolChoice', label: 'Tool Choice', type: 'select', default: 'auto', description: 'ツール利用の判断方法。autoはLLMが必要に応じて判断、requiredは必ずツールを使用', options: [
-        { label: 'Auto（LLMが判断）', value: 'auto' },
-        { label: 'Required（必ず使用）', value: 'required' },
-      ]},
-      { name: 'maxIterations', label: 'Max Iterations', type: 'number', default: 5, min: 1, max: 20, description: 'ツール呼び出しの最大回数。無限ループを防止' },
+      { name: 'temperature', label: 'Temperature', type: 'number', default: 0.7, min: 0, max: 2, step: 0.1 },
+      { name: 'maxTokens', label: 'Max Tokens', type: 'number', default: 2000 },
     ],
-    inputHandles: [
-      { id: 'input', label: 'Input', type: 'any', position: 'left' },
-      { id: 'tools', label: 'Tools', type: 'tool', position: 'top', multiple: true },
-      { id: 'document', label: 'Document', type: 'document', position: 'top', multiple: true },
-    ],
+    inputHandles: [],
     outputHandles: [
-      { id: 'output', label: 'Output', type: 'any', position: 'right' },
-      { id: 'chatModel', label: 'Chat Model', type: 'chatModel', position: 'bottom' },
+      { id: 'output', label: 'AzureChatOpenAI', type: 'BaseChatModel', position: 'right' },
+    ],
+  },
+  {
+    type: 'chatAnthropic',
+    label: 'ChatAnthropic',
+    category: 'chatModels',
+    icon: '🅰️',
+    description: 'Anthropic Claudeモデルを使用。Claude 3 Opus、Sonnet、Haikuをサポート。',
+    color: '#D4A574',
+    inputs: [
+      { name: 'modelName', label: 'Model Name', type: 'select', default: 'claude-3-sonnet-20240229', options: [
+        { label: 'Claude 3 Opus', value: 'claude-3-opus-20240229' },
+        { label: 'Claude 3 Sonnet', value: 'claude-3-sonnet-20240229' },
+        { label: 'Claude 3 Haiku', value: 'claude-3-haiku-20240307' },
+        { label: 'Claude 3.5 Sonnet', value: 'claude-3-5-sonnet-20240620' },
+      ]},
+      { name: 'temperature', label: 'Temperature', type: 'number', default: 0.7, min: 0, max: 1, step: 0.1 },
+      { name: 'maxTokens', label: 'Max Tokens', type: 'number', default: 4096 },
+      { name: 'anthropicApiKey', label: 'Anthropic API Key', type: 'password' },
+    ],
+    inputHandles: [],
+    outputHandles: [
+      { id: 'output', label: 'ChatAnthropic', type: 'BaseChatModel', position: 'right' },
+    ],
+  },
+  {
+    type: 'chatGoogleGenerativeAI',
+    label: 'Google Gemini',
+    category: 'chatModels',
+    icon: '🔷',
+    description: 'Google Geminiモデルを使用。Gemini Pro、Gemini Pro Visionをサポート。',
+    color: '#4285F4',
+    inputs: [
+      { name: 'modelName', label: 'Model Name', type: 'select', default: 'gemini-pro', options: [
+        { label: 'Gemini 1.5 Pro', value: 'gemini-1.5-pro' },
+        { label: 'Gemini 1.5 Flash', value: 'gemini-1.5-flash' },
+        { label: 'Gemini Pro', value: 'gemini-pro' },
+      ]},
+      { name: 'temperature', label: 'Temperature', type: 'number', default: 0.7, min: 0, max: 1, step: 0.1 },
+      { name: 'maxOutputTokens', label: 'Max Output Tokens', type: 'number', default: 2048 },
+      { name: 'googleApiKey', label: 'Google API Key', type: 'password' },
+    ],
+    inputHandles: [],
+    outputHandles: [
+      { id: 'output', label: 'ChatGoogleGenerativeAI', type: 'BaseChatModel', position: 'right' },
+    ],
+  },
+  {
+    type: 'chatOllama',
+    label: 'ChatOllama',
+    category: 'chatModels',
+    icon: '🦙',
+    description: 'ローカルで実行するOllamaモデル。Llama、Mistral、Codellama等をサポート。',
+    color: '#333333',
+    inputs: [
+      { name: 'baseUrl', label: 'Base URL', type: 'string', default: 'http://localhost:11434' },
+      { name: 'modelName', label: 'Model Name', type: 'string', default: 'llama2', placeholder: 'llama2, mistral, codellama...' },
+      { name: 'temperature', label: 'Temperature', type: 'number', default: 0.7, min: 0, max: 1, step: 0.1 },
+    ],
+    inputHandles: [],
+    outputHandles: [
+      { id: 'output', label: 'ChatOllama', type: 'BaseChatModel', position: 'right' },
     ],
   },
 ];
 
 // ============================================
-// Vector Stores
+// Embeddings (Flowise互換)
+// ============================================
+export const EMBEDDING_NODES: NodeTypeDefinition[] = [
+  {
+    type: 'openAIEmbeddings',
+    label: 'OpenAI Embeddings',
+    category: 'embeddings',
+    icon: '📊',
+    description: 'OpenAIの埋め込みモデル。テキストをベクトルに変換。',
+    color: '#10A37F',
+    inputs: [
+      { name: 'modelName', label: 'Model Name', type: 'select', default: 'text-embedding-3-small', options: [
+        { label: 'text-embedding-3-small', value: 'text-embedding-3-small' },
+        { label: 'text-embedding-3-large', value: 'text-embedding-3-large' },
+        { label: 'text-embedding-ada-002', value: 'text-embedding-ada-002' },
+      ]},
+      { name: 'openAIApiKey', label: 'OpenAI API Key', type: 'password' },
+    ],
+    inputHandles: [],
+    outputHandles: [
+      { id: 'output', label: 'OpenAIEmbeddings', type: 'Embeddings', position: 'right' },
+    ],
+  },
+  {
+    type: 'azureOpenAIEmbeddings',
+    label: 'Azure OpenAI Embeddings',
+    category: 'embeddings',
+    icon: '☁️',
+    description: 'Azure OpenAIの埋め込みモデル。',
+    color: '#0078D4',
+    inputs: [],
+    inputHandles: [],
+    outputHandles: [
+      { id: 'output', label: 'AzureOpenAIEmbeddings', type: 'Embeddings', position: 'right' },
+    ],
+  },
+  {
+    type: 'cohereEmbeddings',
+    label: 'Cohere Embeddings',
+    category: 'embeddings',
+    icon: '🔮',
+    description: 'Cohereの埋め込みモデル。多言語対応。',
+    color: '#D4A574',
+    inputs: [
+      { name: 'modelName', label: 'Model Name', type: 'string', default: 'embed-english-v3.0' },
+      { name: 'cohereApiKey', label: 'Cohere API Key', type: 'password' },
+    ],
+    inputHandles: [],
+    outputHandles: [
+      { id: 'output', label: 'CohereEmbeddings', type: 'Embeddings', position: 'right' },
+    ],
+  },
+];
+
+// ============================================
+// Vector Stores (Flowise互換)
 // ============================================
 export const VECTOR_STORE_NODES: NodeTypeDefinition[] = [
   {
-    type: 'vectorstore',
-    label: 'Vector Store',
+    type: 'pinecone',
+    label: 'Pinecone',
     category: 'vectorStores',
-    icon: '📚',
-    description: '汎用ベクトルストア。セマンティック検索に使用。',
-    color: '#9C27B0',
+    icon: '🌲',
+    description: 'Pineconeベクトルデータベース。スケーラブルなベクトル検索。',
+    color: '#000000',
     inputs: [
-      { name: 'provider', label: 'Provider', type: 'select', default: 'pinecone', description: 'ベクトルストアプロバイダー', options: [
-        { label: 'Pinecone', value: 'pinecone' },
-        { label: 'Weaviate', value: 'weaviate' },
-        { label: 'Chroma', value: 'chroma' },
-        { label: 'Qdrant', value: 'qdrant' },
-      ]},
-      { name: 'indexName', label: 'Index Name', type: 'string', required: true, description: 'インデックス/コレクション名' },
-      { name: 'topK', label: 'Top K', type: 'number', default: 4, min: 1, max: 100, description: '検索結果として返す上位K件' },
+      { name: 'pineconeIndex', label: 'Pinecone Index', type: 'string', required: true },
+      { name: 'pineconeNamespace', label: 'Namespace', type: 'string' },
+      { name: 'pineconeApiKey', label: 'Pinecone API Key', type: 'password' },
+      { name: 'topK', label: 'Top K', type: 'number', default: 4 },
     ],
     inputHandles: [
-      { id: 'input', label: 'Query', type: 'any', position: 'left' },
+      { id: 'embeddings', label: 'Embeddings', type: 'Embeddings', position: 'left' },
+      { id: 'document', label: 'Document', type: 'Document', position: 'left' },
     ],
     outputHandles: [
-      { id: 'output', label: 'Results', type: 'any', position: 'right' },
+      { id: 'output', label: 'Pinecone', type: 'VectorStore', position: 'right' },
     ],
   },
   {
-    type: 'weaviate',
-    label: 'Weaviate',
+    type: 'chroma',
+    label: 'Chroma',
     category: 'vectorStores',
-    icon: '📚',
-    description: 'Weaviateベクターデータベース。セマンティック検索、ハイブリッド検索、フィルタリング機能を提供。',
-    color: '#9C27B0',
+    icon: '🎨',
+    description: 'Chromaベクトルデータベース。オープンソースで使いやすい。',
+    color: '#FF6B6B',
     inputs: [
-      { name: 'scheme', label: 'Scheme', type: 'select', default: 'http', description: '接続プロトコル', options: [
-        { label: 'HTTP', value: 'http' },
-        { label: 'HTTPS', value: 'https' },
-      ]},
-      { name: 'host', label: 'Host', type: 'string', required: true, placeholder: 'localhost:8080', description: 'Weaviateサーバーのホストとポート' },
-      { name: 'indexName', label: 'Index/Class Name', type: 'string', required: true, description: 'データを格納するクラス（コレクション）名' },
-      { name: 'apiKey', label: 'API Key', type: 'password', description: 'Weaviate Cloud認証用のAPIキー（オプション）' },
-      { name: 'textKey', label: 'Text Key', type: 'string', default: 'text', description: 'テキストコンテンツを格納するプロパティ名' },
-      { name: 'metadataKeys', label: 'Metadata Keys', type: 'string', placeholder: 'key1,key2,key3', description: 'メタデータとして保存するキー（カンマ区切り）' },
-      { name: 'topK', label: 'Top K', type: 'number', default: 4, min: 1, max: 100, description: '検索結果として返す上位K件' },
-      { name: 'weaviateMetadataFilter', label: 'Metadata Filter', type: 'json', placeholder: '{"category": "技術"}', description: 'メタデータによるフィルタリング条件' },
+      { name: 'collectionName', label: 'Collection Name', type: 'string', required: true },
+      { name: 'chromaURL', label: 'Chroma URL', type: 'string', default: 'http://localhost:8000' },
+      { name: 'topK', label: 'Top K', type: 'number', default: 4 },
     ],
     inputHandles: [
-      { id: 'input', label: 'Query', type: 'any', position: 'left' },
-      { id: 'embeddings', label: 'Embeddings', type: 'embeddings', position: 'top' },
-      { id: 'document', label: 'Document', type: 'document', position: 'top', multiple: true },
+      { id: 'embeddings', label: 'Embeddings', type: 'Embeddings', position: 'left' },
+      { id: 'document', label: 'Document', type: 'Document', position: 'left' },
     ],
     outputHandles: [
-      { id: 'output', label: 'Results', type: 'any', position: 'right' },
-      { id: 'retriever', label: 'Retriever', type: 'retriever', position: 'bottom' },
-      { id: 'vectorStore', label: 'Vector Store', type: 'vectorStore', position: 'bottom' },
+      { id: 'output', label: 'Chroma', type: 'VectorStore', position: 'right' },
+    ],
+  },
+  {
+    type: 'faiss',
+    label: 'FAISS',
+    category: 'vectorStores',
+    icon: '⚡',
+    description: 'Facebook AI Similarity Search。高速なローカルベクトル検索。',
+    color: '#1877F2',
+    inputs: [
+      { name: 'topK', label: 'Top K', type: 'number', default: 4 },
+    ],
+    inputHandles: [
+      { id: 'embeddings', label: 'Embeddings', type: 'Embeddings', position: 'left' },
+      { id: 'document', label: 'Document', type: 'Document', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'FAISS', type: 'VectorStore', position: 'right' },
+    ],
+  },
+  {
+    type: 'inMemoryVectorStore',
+    label: 'In-Memory Vector Store',
+    category: 'vectorStores',
+    icon: '💾',
+    description: 'メモリ内ベクトルストア。開発・テスト用。',
+    color: '#9C27B0',
+    inputs: [
+      { name: 'topK', label: 'Top K', type: 'number', default: 4 },
+    ],
+    inputHandles: [
+      { id: 'embeddings', label: 'Embeddings', type: 'Embeddings', position: 'left' },
+      { id: 'document', label: 'Document', type: 'Document', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'InMemoryVectorStore', type: 'VectorStore', position: 'right' },
     ],
   },
 ];
 
 // ============================================
-// Document Loaders
+// Document Loaders (Flowise互換)
 // ============================================
 export const DOCUMENT_LOADER_NODES: NodeTypeDefinition[] = [
   {
@@ -311,220 +336,385 @@ export const DOCUMENT_LOADER_NODES: NodeTypeDefinition[] = [
     label: 'PDF Loader',
     category: 'documentLoaders',
     icon: '📄',
-    description: 'PDFファイル読み込み',
-    color: '#FF9800',
+    description: 'PDFファイルを読み込む。',
+    color: '#FF5722',
     inputs: [
-      { name: 'file', label: 'PDF File', type: 'file', required: true },
-      { name: 'splitPages', label: 'Split Pages', type: 'boolean', default: true },
+      { name: 'pdfFile', label: 'PDF File', type: 'file' },
+      { name: 'usage', label: 'Usage', type: 'select', default: 'perPage', options: [
+        { label: 'One document per page', value: 'perPage' },
+        { label: 'One document per file', value: 'perFile' },
+      ]},
     ],
-    inputHandles: [
-      { id: 'input', label: 'File Path', type: 'any', position: 'left' },
-    ],
+    inputHandles: [],
     outputHandles: [
-      { id: 'output', label: 'Content', type: 'any', position: 'right' },
-      { id: 'document', label: 'Document', type: 'document', position: 'bottom' },
+      { id: 'output', label: 'Document', type: 'Document', position: 'right' },
     ],
   },
   {
-    type: 'docxLoader',
-    label: 'DOCX Loader',
+    type: 'textLoader',
+    label: 'Text File Loader',
     category: 'documentLoaders',
     icon: '📝',
-    description: 'Microsoft Word読み込み',
-    color: '#FF9800',
+    description: 'テキストファイルを読み込む。',
+    color: '#795548',
     inputs: [
-      { name: 'file', label: 'DOCX File', type: 'file', required: true },
+      { name: 'textFile', label: 'Text File', type: 'file' },
     ],
-    inputHandles: [
-      { id: 'input', label: 'File Path', type: 'any', position: 'left' },
-    ],
+    inputHandles: [],
     outputHandles: [
-      { id: 'output', label: 'Content', type: 'any', position: 'right' },
-      { id: 'document', label: 'Document', type: 'document', position: 'bottom' },
-    ],
-  },
-  {
-    type: 'excelLoader',
-    label: 'Excel Loader',
-    category: 'documentLoaders',
-    icon: '📊',
-    description: 'Microsoft Excel読み込み',
-    color: '#FF9800',
-    inputs: [
-      { name: 'file', label: 'Excel File', type: 'file', required: true },
-      { name: 'sheetName', label: 'Sheet Name', type: 'string', placeholder: 'Sheet1' },
-    ],
-    inputHandles: [
-      { id: 'input', label: 'File Path', type: 'any', position: 'left' },
-    ],
-    outputHandles: [
-      { id: 'output', label: 'Content', type: 'any', position: 'right' },
-      { id: 'document', label: 'Document', type: 'document', position: 'bottom' },
-    ],
-  },
-  {
-    type: 'pptxLoader',
-    label: 'PowerPoint Loader',
-    category: 'documentLoaders',
-    icon: '📽️',
-    description: 'Microsoft PowerPoint読み込み',
-    color: '#FF9800',
-    inputs: [
-      { name: 'file', label: 'PPTX File', type: 'file', required: true },
-    ],
-    inputHandles: [
-      { id: 'input', label: 'File Path', type: 'any', position: 'left' },
-    ],
-    outputHandles: [
-      { id: 'output', label: 'Content', type: 'any', position: 'right' },
-      { id: 'document', label: 'Document', type: 'document', position: 'bottom' },
+      { id: 'output', label: 'Document', type: 'Document', position: 'right' },
     ],
   },
   {
     type: 'csvLoader',
     label: 'CSV Loader',
     category: 'documentLoaders',
-    icon: '📋',
-    description: 'CSVファイル読み込み',
-    color: '#FF9800',
+    icon: '📊',
+    description: 'CSVファイルを読み込む。',
+    color: '#4CAF50',
     inputs: [
-      { name: 'file', label: 'CSV File', type: 'file', required: true },
-      { name: 'columnName', label: 'Column Name', type: 'string', placeholder: 'content' },
-      { name: 'separator', label: 'Separator', type: 'string', default: ',' },
+      { name: 'csvFile', label: 'CSV File', type: 'file' },
+      { name: 'columnName', label: 'Column Name', type: 'string', description: '使用するカラム名' },
     ],
-    inputHandles: [
-      { id: 'input', label: 'File Path', type: 'any', position: 'left' },
-    ],
+    inputHandles: [],
     outputHandles: [
-      { id: 'output', label: 'Content', type: 'any', position: 'right' },
-      { id: 'document', label: 'Document', type: 'document', position: 'bottom' },
+      { id: 'output', label: 'Document', type: 'Document', position: 'right' },
     ],
   },
   {
     type: 'jsonLoader',
     label: 'JSON Loader',
     category: 'documentLoaders',
-    icon: '🔧',
-    description: 'JSONファイル読み込み',
-    color: '#FF9800',
+    icon: '📋',
+    description: 'JSONファイルを読み込む。',
+    color: '#FFC107',
     inputs: [
-      { name: 'file', label: 'JSON File', type: 'file', required: true },
-      { name: 'pointer', label: 'JSON Pointer', type: 'string', placeholder: '/data/items' },
+      { name: 'jsonFile', label: 'JSON File', type: 'file' },
+      { name: 'pointersName', label: 'Pointers', type: 'string', placeholder: '/content, /text' },
     ],
-    inputHandles: [
-      { id: 'input', label: 'File Path', type: 'any', position: 'left' },
-    ],
+    inputHandles: [],
     outputHandles: [
-      { id: 'output', label: 'Content', type: 'any', position: 'right' },
-      { id: 'document', label: 'Document', type: 'document', position: 'bottom' },
+      { id: 'output', label: 'Document', type: 'Document', position: 'right' },
     ],
   },
   {
-    type: 'jsonlLoader',
-    label: 'JSONL Loader',
+    type: 'cheerioWebScraper',
+    label: 'Web Scraper',
     category: 'documentLoaders',
-    icon: '📃',
-    description: 'JSON Linesファイル読み込み',
-    color: '#FF9800',
+    icon: '🌐',
+    description: 'Webページをスクレイピング。',
+    color: '#2196F3',
     inputs: [
-      { name: 'file', label: 'JSONL File', type: 'file', required: true },
-      { name: 'pointer', label: 'JSON Pointer', type: 'string' },
+      { name: 'url', label: 'URL', type: 'string', required: true, placeholder: 'https://example.com' },
+      { name: 'selector', label: 'CSS Selector', type: 'string', placeholder: 'body, .content, #main' },
     ],
-    inputHandles: [
-      { id: 'input', label: 'File Path', type: 'any', position: 'left' },
-    ],
+    inputHandles: [],
     outputHandles: [
-      { id: 'output', label: 'Content', type: 'any', position: 'right' },
-      { id: 'document', label: 'Document', type: 'document', position: 'bottom' },
-    ],
-  },
-  {
-    type: 'textLoader',
-    label: 'Plain Text Loader',
-    category: 'documentLoaders',
-    icon: '📰',
-    description: 'テキストファイル読み込み',
-    color: '#FF9800',
-    inputs: [
-      { name: 'file', label: 'Text File', type: 'file', required: true },
-    ],
-    inputHandles: [
-      { id: 'input', label: 'File Path', type: 'any', position: 'left' },
-    ],
-    outputHandles: [
-      { id: 'output', label: 'Content', type: 'any', position: 'right' },
-      { id: 'document', label: 'Document', type: 'document', position: 'bottom' },
+      { id: 'output', label: 'Document', type: 'Document', position: 'right' },
     ],
   },
 ];
 
 // ============================================
-// Memory
+// Text Splitters (Flowise互換)
 // ============================================
-export const MEMORY_NODES: NodeTypeDefinition[] = [
+export const TEXT_SPLITTER_NODES: NodeTypeDefinition[] = [
   {
-    type: 'memory',
-    label: 'Memory',
-    category: 'memory',
-    icon: '🧠',
-    description: '汎用メモリノード。会話履歴やコンテキストを保持。',
-    color: '#E91E63',
+    type: 'recursiveCharacterTextSplitter',
+    label: 'Recursive Text Splitter',
+    category: 'textSplitters',
+    icon: '✂️',
+    description: '再帰的にテキストを分割。最も一般的なスプリッター。',
+    color: '#795548',
     inputs: [
-      { name: 'memoryType', label: 'Memory Type', type: 'select', default: 'buffer', description: 'メモリの種類', options: [
-        { label: 'Buffer', value: 'buffer' },
-        { label: 'Buffer Window', value: 'bufferWindow' },
-        { label: 'Redis', value: 'redis' },
-      ]},
-      { name: 'sessionId', label: 'Session ID', type: 'string', placeholder: 'auto-generated if empty' },
-      { name: 'windowSize', label: 'Window Size', type: 'number', default: 10, min: 1, max: 100 },
+      { name: 'chunkSize', label: 'Chunk Size', type: 'number', default: 1000 },
+      { name: 'chunkOverlap', label: 'Chunk Overlap', type: 'number', default: 200 },
     ],
     inputHandles: [
-      { id: 'input', label: 'Input', type: 'any', position: 'left' },
+      { id: 'document', label: 'Document', type: 'Document', position: 'left' },
     ],
     outputHandles: [
-      { id: 'output', label: 'Output', type: 'any', position: 'right' },
-      { id: 'memory', label: 'Memory', type: 'memory', position: 'bottom' },
+      { id: 'output', label: 'Document', type: 'Document', position: 'right' },
     ],
   },
   {
-    type: 'redisMemory',
-    label: 'Redis-Backed Chat Memory',
-    category: 'memory',
-    icon: '🧠',
-    description: 'Redisに会話履歴を永続化。セッション間での会話継続、スケーラブルなメモリ管理を実現。',
-    color: '#E91E63',
+    type: 'tokenTextSplitter',
+    label: 'Token Text Splitter',
+    category: 'textSplitters',
+    icon: '🔤',
+    description: 'トークン数でテキストを分割。',
+    color: '#607D8B',
     inputs: [
-      { name: 'redisUrl', label: 'Redis URL', type: 'string', required: true, placeholder: 'redis://localhost:6379', description: 'Redis接続URL（redis://host:port形式）' },
-      { name: 'sessionId', label: 'Session ID', type: 'string', placeholder: 'auto-generated if empty', description: '会話セッションの識別子。空の場合は自動生成' },
-      { name: 'sessionTTL', label: 'Session TTL', type: 'number', default: 3600, min: 0, description: 'セッションの有効期限（秒）。0は無期限' },
-      { name: 'memoryKey', label: 'Memory Key', type: 'string', default: 'chat_history', description: '会話履歴を格納するキー名' },
-      { name: 'windowSize', label: 'Window Size', type: 'number', default: 10, min: 1, max: 100, description: '保持する会話ターン数' },
-      { name: 'inputKey', label: 'Input Key', type: 'string', default: 'input', description: 'ユーザー入力を格納するキー' },
-      { name: 'outputKey', label: 'Output Key', type: 'string', default: 'output', description: 'AI応答を格納するキー' },
-      { name: 'returnMessages', label: 'Return Messages', type: 'boolean', default: true, description: 'メッセージオブジェクトとして返すか' },
+      { name: 'chunkSize', label: 'Chunk Size (tokens)', type: 'number', default: 500 },
+      { name: 'chunkOverlap', label: 'Chunk Overlap (tokens)', type: 'number', default: 50 },
+    ],
+    inputHandles: [
+      { id: 'document', label: 'Document', type: 'Document', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'Document', type: 'Document', position: 'right' },
+    ],
+  },
+];
+
+// ============================================
+// Tools (Flowise互換)
+// ============================================
+export const TOOL_NODES: NodeTypeDefinition[] = [
+  {
+    type: 'calculator',
+    label: 'Calculator',
+    category: 'tools',
+    icon: '🧮',
+    description: '数学的な計算を実行。',
+    color: '#607D8B',
+    inputs: [],
+    inputHandles: [],
+    outputHandles: [
+      { id: 'output', label: 'Calculator', type: 'Tool', position: 'right' },
+    ],
+  },
+  {
+    type: 'serpAPI',
+    label: 'SerpAPI (Google Search)',
+    category: 'tools',
+    icon: '🔍',
+    description: 'Google検索を実行。',
+    color: '#4285F4',
+    inputs: [
+      { name: 'serpApiKey', label: 'SerpAPI Key', type: 'password' },
     ],
     inputHandles: [],
     outputHandles: [
-      { id: 'memory', label: 'Memory', type: 'memory', position: 'right' },
+      { id: 'output', label: 'SerpAPI', type: 'Tool', position: 'right' },
     ],
   },
+  {
+    type: 'braveSearch',
+    label: 'Brave Search',
+    category: 'tools',
+    icon: '🦁',
+    description: 'Brave Searchを使用したWeb検索。',
+    color: '#FB542B',
+    inputs: [
+      { name: 'braveApiKey', label: 'Brave API Key', type: 'password' },
+    ],
+    inputHandles: [],
+    outputHandles: [
+      { id: 'output', label: 'BraveSearch', type: 'Tool', position: 'right' },
+    ],
+  },
+  {
+    type: 'webBrowser',
+    label: 'Web Browser',
+    category: 'tools',
+    icon: '🌐',
+    description: 'Webページの内容を取得・解析。',
+    color: '#2196F3',
+    inputs: [],
+    inputHandles: [
+      { id: 'model', label: 'Chat Model', type: 'BaseChatModel', position: 'left' },
+      { id: 'embeddings', label: 'Embeddings', type: 'Embeddings', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'WebBrowser', type: 'Tool', position: 'right' },
+    ],
+  },
+  {
+    type: 'retrieverTool',
+    label: 'Retriever Tool',
+    category: 'tools',
+    icon: '🔎',
+    description: 'Vector Storeから情報を検索するツール。',
+    color: '#9C27B0',
+    inputs: [
+      { name: 'name', label: 'Tool Name', type: 'string', required: true },
+      { name: 'description', label: 'Tool Description', type: 'text', required: true },
+    ],
+    inputHandles: [
+      { id: 'vectorStore', label: 'Vector Store', type: 'VectorStore', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'RetrieverTool', type: 'Tool', position: 'right' },
+    ],
+  },
+  {
+    type: 'customTool',
+    label: 'Custom Tool',
+    category: 'tools',
+    icon: '🔧',
+    description: 'JavaScriptでカスタムツールを定義。',
+    color: '#FF9800',
+    inputs: [
+      { name: 'name', label: 'Tool Name', type: 'string', required: true },
+      { name: 'description', label: 'Tool Description', type: 'text', required: true },
+      { name: 'code', label: 'JavaScript Code', type: 'text', required: true, placeholder: 'return "Hello World"' },
+    ],
+    inputHandles: [],
+    outputHandles: [
+      { id: 'output', label: 'CustomTool', type: 'Tool', position: 'right' },
+    ],
+  },
+];
+
+// ============================================
+// Agents (Flowise互換)
+// ============================================
+export const AGENT_NODES: NodeTypeDefinition[] = [
+  {
+    type: 'openAIFunctionAgent',
+    label: 'OpenAI Function Agent',
+    category: 'agents',
+    icon: '🤖',
+    description: 'OpenAI Function Callingを使用したエージェント。',
+    color: '#10A37F',
+    inputs: [
+      { name: 'systemMessage', label: 'System Message', type: 'text', placeholder: 'You are a helpful assistant.' },
+    ],
+    inputHandles: [
+      { id: 'model', label: 'Chat Model', type: 'BaseChatModel', position: 'left' },
+      { id: 'tools', label: 'Tools', type: 'Tool', position: 'left' },
+      { id: 'memory', label: 'Memory', type: 'BaseMemory', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'Agent', type: 'AgentExecutor', position: 'right' },
+    ],
+  },
+  {
+    type: 'conversationalRetrievalAgent',
+    label: 'Conversational Retrieval Agent',
+    category: 'agents',
+    icon: '💬',
+    description: 'RAGを使用した会話型エージェント。',
+    color: '#2196F3',
+    inputs: [
+      { name: 'systemMessage', label: 'System Message', type: 'text' },
+    ],
+    inputHandles: [
+      { id: 'model', label: 'Chat Model', type: 'BaseChatModel', position: 'left' },
+      { id: 'vectorStore', label: 'Vector Store', type: 'VectorStore', position: 'left' },
+      { id: 'memory', label: 'Memory', type: 'BaseMemory', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'Agent', type: 'AgentExecutor', position: 'right' },
+    ],
+  },
+  {
+    type: 'toolAgent',
+    label: 'Tool Agent',
+    category: 'agents',
+    icon: '🔧',
+    description: '複数のツールを使用できる汎用エージェント。',
+    color: '#E91E63',
+    inputs: [
+      { name: 'systemMessage', label: 'System Message', type: 'text' },
+      { name: 'maxIterations', label: 'Max Iterations', type: 'number', default: 10 },
+    ],
+    inputHandles: [
+      { id: 'model', label: 'Chat Model', type: 'BaseChatModel', position: 'left' },
+      { id: 'tools', label: 'Tools', type: 'Tool', position: 'left' },
+      { id: 'memory', label: 'Memory', type: 'BaseMemory', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'Agent', type: 'AgentExecutor', position: 'right' },
+    ],
+  },
+];
+
+// ============================================
+// Chains (Flowise互換 - 終端ノード)
+// ============================================
+export const CHAIN_NODES: NodeTypeDefinition[] = [
+  {
+    type: 'conversationChain',
+    label: 'Conversation Chain',
+    category: 'chains',
+    icon: '🔗',
+    description: '会話チェーン。シンプルなチャット機能。終端ノード。',
+    color: '#2196F3',
+    inputs: [
+      { name: 'systemMessage', label: 'System Message', type: 'text', placeholder: 'You are a helpful assistant...' },
+    ],
+    inputHandles: [
+      { id: 'model', label: 'Chat Model', type: 'BaseChatModel', position: 'left' },
+      { id: 'memory', label: 'Memory', type: 'BaseMemory', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'Output', type: 'Chain', position: 'right' },
+    ],
+  },
+  {
+    type: 'llmChain',
+    label: 'LLM Chain',
+    category: 'chains',
+    icon: '⛓️',
+    description: 'プロンプトテンプレートとLLMを組み合わせ。終端ノード。',
+    color: '#3F51B5',
+    inputs: [],
+    inputHandles: [
+      { id: 'model', label: 'Language Model', type: 'BaseChatModel', position: 'left' },
+      { id: 'prompt', label: 'Prompt Template', type: 'BasePromptTemplate', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'Output', type: 'Chain', position: 'right' },
+    ],
+  },
+  {
+    type: 'conversationalRetrievalQAChain',
+    label: 'Conversational Retrieval QA',
+    category: 'chains',
+    icon: '📚',
+    description: 'RAGを使用した質問応答チェーン。終端ノード。',
+    color: '#9C27B0',
+    inputs: [
+      { name: 'returnSourceDocuments', label: 'Return Source Documents', type: 'boolean', default: true },
+      { name: 'systemMessage', label: 'System Message', type: 'text' },
+    ],
+    inputHandles: [
+      { id: 'model', label: 'Chat Model', type: 'BaseChatModel', position: 'left' },
+      { id: 'vectorStore', label: 'Vector Store', type: 'VectorStore', position: 'left' },
+      { id: 'memory', label: 'Memory', type: 'BaseMemory', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'Output', type: 'Chain', position: 'right' },
+    ],
+  },
+  {
+    type: 'retrievalQAChain',
+    label: 'Retrieval QA Chain',
+    category: 'chains',
+    icon: '🔎',
+    description: 'シンプルなRAG質問応答チェーン。終端ノード。',
+    color: '#673AB7',
+    inputs: [],
+    inputHandles: [
+      { id: 'model', label: 'Chat Model', type: 'BaseChatModel', position: 'left' },
+      { id: 'vectorStore', label: 'Vector Store', type: 'VectorStore', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'Output', type: 'Chain', position: 'right' },
+    ],
+  },
+];
+
+// ============================================
+// Memory (Flowise互換)
+// ============================================
+export const MEMORY_NODES: NodeTypeDefinition[] = [
   {
     type: 'bufferMemory',
     label: 'Buffer Memory',
     category: 'memory',
-    icon: '📝',
-    description: 'インメモリの会話履歴。シンプルで高速だが、サーバー再起動で消失。',
-    color: '#E91E63',
+    icon: '💾',
+    description: 'シンプルな会話履歴メモリ。',
+    color: '#673AB7',
     inputs: [
-      { name: 'sessionId', label: 'Session ID', type: 'string', placeholder: 'auto-generated if empty', description: '会話セッションの識別子' },
-      { name: 'memoryKey', label: 'Memory Key', type: 'string', default: 'chat_history', description: '会話履歴を格納するキー名' },
-      { name: 'inputKey', label: 'Input Key', type: 'string', default: 'input', description: 'ユーザー入力を格納するキー' },
-      { name: 'outputKey', label: 'Output Key', type: 'string', default: 'output', description: 'AI応答を格納するキー' },
-      { name: 'returnMessages', label: 'Return Messages', type: 'boolean', default: true, description: 'メッセージオブジェクトとして返すか' },
+      { name: 'memoryKey', label: 'Memory Key', type: 'string', default: 'chat_history' },
+      { name: 'sessionId', label: 'Session ID', type: 'string' },
     ],
     inputHandles: [],
     outputHandles: [
-      { id: 'memory', label: 'Memory', type: 'memory', position: 'right' },
+      { id: 'output', label: 'Memory', type: 'BaseMemory', position: 'right' },
     ],
   },
   {
@@ -532,202 +722,208 @@ export const MEMORY_NODES: NodeTypeDefinition[] = [
     label: 'Buffer Window Memory',
     category: 'memory',
     icon: '🪟',
-    description: '直近K回の会話のみを保持するメモリ。長い会話でもトークン数を制限可能。',
-    color: '#E91E63',
+    description: '直近N件の会話のみを保持するメモリ。',
+    color: '#9C27B0',
     inputs: [
-      { name: 'sessionId', label: 'Session ID', type: 'string', placeholder: 'auto-generated if empty', description: '会話セッションの識別子' },
-      { name: 'k', label: 'Window Size (K)', type: 'number', default: 5, min: 1, max: 50, description: '保持する会話ターン数' },
-      { name: 'memoryKey', label: 'Memory Key', type: 'string', default: 'chat_history', description: '会話履歴を格納するキー名' },
-      { name: 'returnMessages', label: 'Return Messages', type: 'boolean', default: true, description: 'メッセージオブジェクトとして返すか' },
+      { name: 'k', label: 'Window Size (K)', type: 'number', default: 5 },
+      { name: 'memoryKey', label: 'Memory Key', type: 'string', default: 'chat_history' },
+      { name: 'sessionId', label: 'Session ID', type: 'string' },
     ],
     inputHandles: [],
     outputHandles: [
-      { id: 'memory', label: 'Memory', type: 'memory', position: 'right' },
+      { id: 'output', label: 'Memory', type: 'BaseMemory', position: 'right' },
+    ],
+  },
+  {
+    type: 'conversationSummaryMemory',
+    label: 'Conversation Summary Memory',
+    category: 'memory',
+    icon: '📝',
+    description: '会話を要約して保持するメモリ。長い会話向け。',
+    color: '#E91E63',
+    inputs: [
+      { name: 'memoryKey', label: 'Memory Key', type: 'string', default: 'chat_history' },
+      { name: 'sessionId', label: 'Session ID', type: 'string' },
+    ],
+    inputHandles: [
+      { id: 'model', label: 'Chat Model', type: 'BaseChatModel', position: 'left' },
+    ],
+    outputHandles: [
+      { id: 'output', label: 'Memory', type: 'BaseMemory', position: 'right' },
+    ],
+  },
+  {
+    type: 'redisBackedChatMemory',
+    label: 'Redis Chat Memory',
+    category: 'memory',
+    icon: '🔴',
+    description: 'Redisで会話履歴を永続化。',
+    color: '#D82C20',
+    inputs: [
+      { name: 'redisUrl', label: 'Redis URL', type: 'string', default: 'redis://localhost:6379' },
+      { name: 'sessionId', label: 'Session ID', type: 'string', required: true },
+      { name: 'sessionTTL', label: 'Session TTL (seconds)', type: 'number', default: 3600 },
+    ],
+    inputHandles: [],
+    outputHandles: [
+      { id: 'output', label: 'Memory', type: 'BaseMemory', position: 'right' },
     ],
   },
 ];
 
 // ============================================
-// Tools
+// Prompts (Flowise互換)
 // ============================================
-export const TOOL_NODES: NodeTypeDefinition[] = [
-  // 汎用ツール
+export const PROMPT_NODES: NodeTypeDefinition[] = [
   {
-    type: 'tool',
-    label: 'Tool',
-    category: 'tools',
-    icon: '🔧',
-    description: '汎用ツール。API呼び出し、カスタム関数、データベースクエリを実行。',
-    color: '#607D8B',
+    type: 'promptTemplate',
+    label: 'Prompt Template',
+    category: 'prompts',
+    icon: '📝',
+    description: '変数を含むプロンプトテンプレート。',
+    color: '#FF9800',
     inputs: [
-      { name: 'toolType', label: 'Tool Type', type: 'select', default: 'api', description: 'ツールの種類', options: [
-        { label: 'API Call', value: 'api' },
-        { label: 'Custom Function', value: 'custom' },
-        { label: 'Database Query', value: 'database' },
-      ]},
-      // API Call用
-      { name: 'apiEndpoint', label: 'API Endpoint', type: 'string', placeholder: 'https://api.example.com/endpoint', description: 'API呼び出し先のURL' },
-      { name: 'method', label: 'HTTP Method', type: 'select', default: 'POST', description: 'HTTPメソッド', options: [
-        { label: 'GET', value: 'GET' },
-        { label: 'POST', value: 'POST' },
-        { label: 'PUT', value: 'PUT' },
-        { label: 'DELETE', value: 'DELETE' },
-      ]},
-      { name: 'headers', label: 'Headers (JSON)', type: 'text', placeholder: '{"Authorization": "Bearer xxx"}', description: 'カスタムHTTPヘッダー（JSON形式）' },
-      { name: 'body', label: 'Request Body (JSON)', type: 'text', placeholder: '{"key": "value"}', description: 'リクエストボディ（未指定時は入力値を使用）' },
-      // Custom Function用
-      { name: 'customCode', label: 'JavaScript Code', type: 'text', placeholder: 'return input.toUpperCase();', description: 'カスタム関数のコード（input変数で入力を参照）' },
-      // Database Query用
-      { name: 'query', label: 'SQL Query', type: 'text', placeholder: 'SELECT * FROM users WHERE id = ?', description: 'SQLクエリ（SELECT文のみ）' },
+      { name: 'template', label: 'Template', type: 'text', required: true, placeholder: '質問: {input}\n回答:' },
     ],
-    inputHandles: [
-      { id: 'input', label: 'Input', type: 'any', position: 'left' },
-    ],
+    inputHandles: [],
     outputHandles: [
-      { id: 'output', label: 'Output', type: 'any', position: 'right' },
-      { id: 'tool', label: 'Tool', type: 'tool', position: 'bottom' },
+      { id: 'output', label: 'Prompt', type: 'BasePromptTemplate', position: 'right' },
     ],
   },
-  // 検索ツール
-  // ユーティリティツール
   {
-    type: 'calculator',
-    label: 'Calculator',
-    category: 'tools',
-    icon: '🧮',
-    description: '計算ツール',
-    color: '#607D8B',
+    type: 'chatPromptTemplate',
+    label: 'Chat Prompt Template',
+    category: 'prompts',
+    icon: '💬',
+    description: 'チャット形式のプロンプトテンプレート。',
+    color: '#FFC107',
+    inputs: [
+      { name: 'systemMessage', label: 'System Message', type: 'text', placeholder: 'You are a helpful assistant.' },
+      { name: 'humanMessage', label: 'Human Message', type: 'text', default: '{input}' },
+    ],
+    inputHandles: [],
+    outputHandles: [
+      { id: 'output', label: 'ChatPrompt', type: 'BasePromptTemplate', position: 'right' },
+    ],
+  },
+  {
+    type: 'fewShotPromptTemplate',
+    label: 'Few-Shot Prompt Template',
+    category: 'prompts',
+    icon: '📚',
+    description: '例を含むFew-shotプロンプトテンプレート。',
+    color: '#FF5722',
+    inputs: [
+      { name: 'examplePrompt', label: 'Example Prompt', type: 'text', required: true },
+      { name: 'examples', label: 'Examples (JSON)', type: 'json', required: true },
+      { name: 'prefix', label: 'Prefix', type: 'text' },
+      { name: 'suffix', label: 'Suffix', type: 'text' },
+    ],
+    inputHandles: [],
+    outputHandles: [
+      { id: 'output', label: 'FewShotPrompt', type: 'BasePromptTemplate', position: 'right' },
+    ],
+  },
+];
+
+// ============================================
+// Output Parsers (Flowise互換)
+// ============================================
+export const OUTPUT_PARSER_NODES: NodeTypeDefinition[] = [
+  {
+    type: 'structuredOutputParser',
+    label: 'Structured Output Parser',
+    category: 'outputParsers',
+    icon: '📤',
+    description: 'LLM出力を構造化データに変換。',
+    color: '#009688',
+    inputs: [
+      { name: 'jsonSchema', label: 'JSON Schema', type: 'json', required: true },
+    ],
+    inputHandles: [],
+    outputHandles: [
+      { id: 'output', label: 'OutputParser', type: 'BaseOutputParser', position: 'right' },
+    ],
+  },
+  {
+    type: 'csvOutputParser',
+    label: 'CSV Output Parser',
+    category: 'outputParsers',
+    icon: '📊',
+    description: 'LLM出力をCSV形式に変換。',
+    color: '#4CAF50',
     inputs: [],
-    inputHandles: [
-      { id: 'input', label: 'Expression', type: 'any', position: 'left' },
-    ],
+    inputHandles: [],
     outputHandles: [
-      { id: 'output', label: 'Result', type: 'any', position: 'right' },
-      { id: 'tool', label: 'Tool', type: 'tool', position: 'bottom' },
-    ],
-  },
-  {
-    type: 'customTool',
-    label: 'Custom Tool',
-    category: 'tools',
-    icon: '🛠️',
-    description: 'カスタムツール定義',
-    color: '#607D8B',
-    inputs: [
-      { name: 'toolName', label: 'Tool Name', type: 'string', required: true },
-      { name: 'toolDescription', label: 'Tool Description', type: 'text', required: true },
-      { name: 'jsCode', label: 'JavaScript Code', type: 'text', required: true, placeholder: 'return "Hello " + input;' },
-    ],
-    inputHandles: [
-      { id: 'input', label: 'Input', type: 'any', position: 'left' },
-    ],
-    outputHandles: [
-      { id: 'output', label: 'Output', type: 'any', position: 'right' },
-      { id: 'tool', label: 'Tool', type: 'tool', position: 'bottom' },
-    ],
-  },
-  {
-    type: 'retrieverTool',
-    label: 'Retriever Tool',
-    category: 'tools',
-    icon: '🔍',
-    description: '検索をツール化',
-    color: '#607D8B',
-    inputs: [
-      { name: 'toolName', label: 'Tool Name', type: 'string', required: true },
-      { name: 'toolDescription', label: 'Tool Description', type: 'text', required: true },
-    ],
-    inputHandles: [
-      { id: 'input', label: 'Query', type: 'any', position: 'left' },
-      { id: 'retriever', label: 'Retriever', type: 'retriever', position: 'top' },
-    ],
-    outputHandles: [
-      { id: 'output', label: 'Results', type: 'any', position: 'right' },
-      { id: 'tool', label: 'Tool', type: 'tool', position: 'bottom' },
-    ],
-  },
-  {
-    type: 'readFile',
-    label: 'Read File',
-    category: 'tools',
-    icon: '📖',
-    description: 'ファイル読み取り',
-    color: '#607D8B',
-    inputs: [
-      { name: 'basePath', label: 'Base Path', type: 'string' },
-    ],
-    inputHandles: [
-      { id: 'input', label: 'File Path', type: 'any', position: 'left' },
-    ],
-    outputHandles: [
-      { id: 'output', label: 'Content', type: 'any', position: 'right' },
-      { id: 'tool', label: 'Tool', type: 'tool', position: 'bottom' },
-    ],
-  },
-  {
-    type: 'writeFile',
-    label: 'Write File',
-    category: 'tools',
-    icon: '✍️',
-    description: 'ファイル書き込み',
-    color: '#607D8B',
-    inputs: [
-      { name: 'basePath', label: 'Base Path', type: 'string', default: './data/output', description: '出力先のベースディレクトリ' },
-      { name: 'filePath', label: 'File Path', type: 'string', required: true, placeholder: 'output.txt', description: 'ファイルパス（basePath からの相対パス）' },
-      { name: 'overwrite', label: 'Overwrite', type: 'boolean', default: true, description: '既存ファイルを上書きするか' },
-    ],
-    inputHandles: [
-      { id: 'input', label: 'Content', type: 'any', position: 'left' },
-    ],
-    outputHandles: [
-      { id: 'output', label: 'Result', type: 'any', position: 'right' },
-      { id: 'tool', label: 'Tool', type: 'tool', position: 'bottom' },
+      { id: 'output', label: 'OutputParser', type: 'BaseOutputParser', position: 'right' },
     ],
   },
 ];
-
-// ============================================
-// OwlAgent Node
-// ============================================
-export const OWL_AGENT_NODE: NodeTypeDefinition = {
-  type: 'owlAgentReference',
-  label: 'OwlAgent Reference',
-  category: 'owlAgent',
-  icon: '🦉',
-  description: '保存済みOwlAgentを参照',
-  color: '#FF5722',
-  inputs: [
-    { name: 'agentId', label: 'Agent', type: 'select', required: true, options: [] }, // 動的に設定
-    { name: 'inputMapping', label: 'Input Mapping', type: 'json' },
-    { name: 'outputMapping', label: 'Output Mapping', type: 'json' },
-  ],
-  inputHandles: [
-    { id: 'input', label: 'Input', type: 'any', position: 'left' },
-  ],
-  outputHandles: [
-    { id: 'output', label: 'Output', type: 'any', position: 'right' },
-  ],
-};
 
 // ============================================
 // 全ノード定義の統合
 // ============================================
 export const ALL_NODE_DEFINITIONS: NodeTypeDefinition[] = [
-  ...FLOW_CONTROL_NODES,
   ...CHAT_MODEL_NODES,
+  ...EMBEDDING_NODES,
   ...VECTOR_STORE_NODES,
   ...DOCUMENT_LOADER_NODES,
-  ...MEMORY_NODES,
+  ...TEXT_SPLITTER_NODES,
   ...TOOL_NODES,
-  OWL_AGENT_NODE,
+  ...AGENT_NODES,
+  ...CHAIN_NODES,
+  ...MEMORY_NODES,
+  ...PROMPT_NODES,
+  ...OUTPUT_PARSER_NODES,
 ];
 
-// カテゴリ別にノードをグループ化
-export const getNodesByCategory = (category: NodeCategory): NodeTypeDefinition[] => {
-  return ALL_NODE_DEFINITIONS.filter((node) => node.category === category);
-};
+// ============================================
+// ヘルパー関数
+// ============================================
 
-// ノードタイプからノード定義を取得
-export const getNodeDefinition = (type: string): NodeTypeDefinition | undefined => {
-  return ALL_NODE_DEFINITIONS.find((node) => node.type === type);
-};
+/**
+ * ノードタイプから定義を取得
+ */
+export function getNodeDefinition(type: string): NodeTypeDefinition | undefined {
+  return ALL_NODE_DEFINITIONS.find(def => def.type === type);
+}
+
+/**
+ * カテゴリからノード定義を取得
+ */
+export function getNodesByCategory(category: NodeCategory): NodeTypeDefinition[] {
+  return ALL_NODE_DEFINITIONS.filter(def => def.category === category);
+}
+
+/**
+ * カテゴリ定義を取得
+ */
+export function getCategoryDefinition(id: NodeCategory): CategoryDefinition | undefined {
+  return NODE_CATEGORIES.find(cat => cat.id === id);
+}
+
+/**
+ * カテゴリごとにグループ化されたノード定義を取得
+ */
+export function getGroupedNodeDefinitions(): Record<NodeCategory, NodeTypeDefinition[]> {
+  const grouped: Partial<Record<NodeCategory, NodeTypeDefinition[]>> = {};
+
+  NODE_CATEGORIES.forEach(cat => {
+    grouped[cat.id] = [];
+  });
+
+  ALL_NODE_DEFINITIONS.forEach(def => {
+    if (grouped[def.category]) {
+      grouped[def.category]!.push(def);
+    }
+  });
+
+  return grouped as Record<NodeCategory, NodeTypeDefinition[]>;
+}
+
+/**
+ * Flowise互換ノードかどうかを判定
+ */
+export function isFlowiseCompatible(type: string): boolean {
+  return ALL_NODE_DEFINITIONS.some(def => def.type === type);
+}

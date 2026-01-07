@@ -8,6 +8,7 @@ const rootDir = process.cwd();
 const standaloneDir = path.join(rootDir, '.next', 'standalone');
 const staticDir = path.join(rootDir, '.next', 'static');
 const publicDir = path.join(rootDir, 'public');
+const dataDir = path.join(rootDir, 'data');
 const zipFile = path.join(rootDir, 'standalone.zip');
 
 // Check if standalone directory exists
@@ -66,6 +67,12 @@ archive.directory(staticDir, 'standalone/.next/static');
 if (fs.existsSync(publicDir)) {
   console.log('Adding public directory...');
   archive.directory(publicDir, 'standalone/public');
+}
+
+// Add data directory if exists (for sample-flows and owlagents)
+if (fs.existsSync(dataDir)) {
+  console.log('Adding data directory...');
+  archive.directory(dataDir, 'standalone/data');
 }
 
 // Add .env.local if exists

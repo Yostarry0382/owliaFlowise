@@ -38,7 +38,7 @@ interface NodePaletteProps {
 export default function NodePalette({ savedOwlAgents = [], onDragStart }: NodePaletteProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedCategories, setExpandedCategories] = useState<NodeCategory[]>(['chatModels', 'tools']);
+  const [expandedCategories, setExpandedCategories] = useState<NodeCategory[]>(['chatModels', 'chains']);
 
   // OwlAgentを編集
   const handleEditAgent = (agentId: string, event: React.MouseEvent) => {

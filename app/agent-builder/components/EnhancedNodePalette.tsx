@@ -30,7 +30,7 @@ import GridViewIcon from '@mui/icons-material/GridView';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import HistoryIcon from '@mui/icons-material/History';
-import FilterListIcon from '@mui/icons-material/FilterList';
+import FolderSpecialIcon from '@mui/icons-material/FolderSpecial';
 import { useRouter } from 'next/navigation';
 import { useTheme } from '../contexts/ThemeContext';
 import {
@@ -40,6 +40,14 @@ import {
   NodeTypeDefinition,
   NodeCategory,
 } from '../types/node-definitions';
+
+interface SampleFlow {
+  id: string;
+  name: string;
+  description: string;
+  nodeCount: number;
+  edgeCount: number;
+}
 
 interface EnhancedNodePaletteProps {
   savedOwlAgents?: { id: string; name: string; description: string }[];
@@ -57,7 +65,7 @@ export default function EnhancedNodePalette({
   const { colors } = useTheme();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedCategories, setExpandedCategories] = useState<NodeCategory[]>(['chatModels', 'tools']);
+  const [expandedCategories, setExpandedCategories] = useState<NodeCategory[]>(['chatModels', 'chains']);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [favorites, setFavorites] = useState<string[]>([]);
   const [recentlyUsed, setRecentlyUsed] = useState<string[]>([]);
@@ -78,6 +86,31 @@ export default function EnhancedNodePalette({
     element: HTMLElement | null;
     node: NodeTypeDefinition | null;
   }>({ element: null, node: null });
+
+  // サンプルフロー関連
+  const [sampleFlows, setSampleFlows] = useState<SampleFlow[]>([]);
+
+  // サンプルフローの取得
+  useEffect(() => {
+    const fetchSampleFlows = async () => {
+      try {
+        const response = await fetch('/api/sample-flows');
+        if (response.ok) {
+          const data = await response.json();
+          setSampleFlows(data.samples || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch sample flows:', error);
+      }
+    };
+    fetchSampleFlows();
+  }, []);
+
+  // サンプルフローを編集画面で開く
+  const handleEditSample = (sampleId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    router.push(`/agent-builder?sample=${sampleId}`);
+  };
 
   // お気に入り管理
   const toggleFavorite = (nodeType: string, e: React.MouseEvent) => {
@@ -481,6 +514,70 @@ export default function EnhancedNodePalette({
                 </Accordion>
               );
             })}
+
+            {/* サンプルフロー */}
+            {sampleFlows.length > 0 && (
+              <>
+                <Divider sx={{ borderColor: colors.border.primary, my: 1 }} />
+                <Box sx={{ px: 1.5, py: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+                    <FolderSpecialIcon sx={{ fontSize: 14, color: '#4CAF50' }} />
+                    <Typography
+                      sx={{
+                        color: colors.text.secondary,
+                        fontSize: '0.7rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: 1,
+                      }}
+                    >
+                      Sample Flows
+                    </Typography>
+                  </Box>
+                  <List dense sx={{ py: 0 }}>
+                    {sampleFlows.map((sample) => (
+                      <ListItem
+                        key={sample.id}
+                        sx={{
+                          mb: 0.5,
+                          borderRadius: 1,
+                          bgcolor: colors.bg.tertiary,
+                          border: '1px solid transparent',
+                          '&:hover': {
+                            bgcolor: colors.bg.hover,
+                            borderColor: '#4CAF50',
+                          },
+                        }}
+                        secondaryAction={
+                          <Tooltip title="Edit sample flow">
+                            <IconButton
+                              edge="end"
+                              size="small"
+                              onClick={(e) => handleEditSample(sample.id, e)}
+                              sx={{ color: '#4CAF50', '&:hover': { bgcolor: 'rgba(76, 175, 80, 0.2)' } }}
+                            >
+                              <EditIcon sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                        }
+                      >
+                        <ListItemIcon sx={{ minWidth: 28, fontSize: '1rem' }}>📋</ListItemIcon>
+                        <ListItemText
+                          primary={sample.name}
+                          secondary={`${sample.nodeCount} nodes`}
+                          primaryTypographyProps={{ sx: { color: colors.text.primary, fontSize: '0.8rem' } }}
+                          secondaryTypographyProps={{
+                            sx: {
+                              color: colors.text.tertiary,
+                              fontSize: '0.65rem',
+                            },
+                          }}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
+              </>
+            )}
 
             {/* 保存済みOwlAgent */}
             {savedOwlAgents.length > 0 && (

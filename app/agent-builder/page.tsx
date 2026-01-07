@@ -179,12 +179,64 @@ function AgentBuilderContent() {
     }
   }, [setNodes, setEdges]);
 
+  // サンプルフローを読み込む
+  const loadSampleFlow = useCallback(async (sampleId: string) => {
+    try {
+      const response = await fetch(`/api/sample-flows?name=${sampleId}`);
+      if (response.ok) {
+        const sampleFlow = await response.json();
+        setCurrentAgentId(null); // 新規作成扱い
+        setCurrentAgentName(sampleFlow.name || sampleId);
+
+        // フローデータを読み込み
+        if (sampleFlow.nodes) {
+          const loadedNodes = sampleFlow.nodes.map((n: any) => ({
+            id: n.id,
+            type: 'custom',
+            position: n.position,
+            data: {
+              ...n.data,
+            },
+          }));
+          const loadedEdges = (sampleFlow.edges || []).map((e: any) => ({
+            ...e,
+            type: 'smoothstep',
+            animated: true,
+          }));
+          setNodes(loadedNodes);
+          setEdges(loadedEdges);
+          setSnackbar({
+            open: true,
+            message: `サンプルフロー「${sampleFlow.name}」を読み込みました`,
+            severity: 'success',
+          });
+        }
+      } else {
+        setSnackbar({
+          open: true,
+          message: 'サンプルフローの読み込みに失敗しました',
+          severity: 'error',
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load sample flow:', error);
+      setSnackbar({
+        open: true,
+        message: 'サンプルフローの読み込みに失敗しました',
+        severity: 'error',
+      });
+    }
+  }, [setNodes, setEdges]);
+
   useEffect(() => {
     const agentId = searchParams.get('id');
+    const sampleId = searchParams.get('sample');
     if (agentId) {
       loadAgentFromUrl(agentId);
+    } else if (sampleId) {
+      loadSampleFlow(sampleId);
     }
-  }, [searchParams, loadAgentFromUrl]);
+  }, [searchParams, loadAgentFromUrl, loadSampleFlow]);
 
   // 保存済みOwlAgentを読み込み
   useEffect(() => {

@@ -1,0 +1,137 @@
+{
+  "id": "sample-conversational-retrieval-chain-b3231350",
+  "name": "Conversational Retrieval QA Chain",
+  "description": "会話履歴付きRAG - 過去の会話を考慮した質問応答システム",
+  "tags": [
+    "sample",
+    "chatModels",
+    "embeddings",
+    "vectorStores",
+    "memory",
+    "chains"
+  ],
+  "icon": "🔍",
+  "createdAt": "2026-01-07T03:30:15.635Z",
+  "updatedAt": "2026-01-07T03:30:15.635Z",
+  "flow": {
+    "nodes": [
+      {
+        "id": "chatOpenAI_1",
+        "type": "chatOpenAI",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "ChatOpenAI",
+          "type": "chatOpenAI",
+          "category": "chatModels",
+          "config": {
+            "modelName": "gpt-3.5-turbo",
+            "temperature": 0.5,
+            "maxTokens": 2000
+          }
+        }
+      },
+      {
+        "id": "openAIEmbeddings_1",
+        "type": "openAIEmbeddings",
+        "position": {
+          "x": 100,
+          "y": 300
+        },
+        "data": {
+          "label": "OpenAI Embeddings",
+          "type": "openAIEmbeddings",
+          "category": "embeddings",
+          "config": {
+            "modelName": "text-embedding-ada-002"
+          }
+        }
+      },
+      {
+        "id": "pinecone_1",
+        "type": "pinecone",
+        "position": {
+          "x": 350,
+          "y": 300
+        },
+        "data": {
+          "label": "Pinecone",
+          "type": "pinecone",
+          "category": "vectorStores",
+          "config": {
+            "pineconeIndex": "my-index",
+            "pineconeNamespace": "",
+            "topK": 4
+          }
+        }
+      },
+      {
+        "id": "bufferWindowMemory_1",
+        "type": "bufferWindowMemory",
+        "position": {
+          "x": 100,
+          "y": 500
+        },
+        "data": {
+          "label": "Buffer Window Memory",
+          "type": "bufferWindowMemory",
+          "category": "memory",
+          "config": {
+            "memoryKey": "chat_history",
+            "k": 5
+          }
+        }
+      },
+      {
+        "id": "conversationalRetrievalQAChain_1",
+        "type": "conversationalRetrievalQAChain",
+        "position": {
+          "x": 600,
+          "y": 250
+        },
+        "data": {
+          "label": "Conversational Retrieval QA",
+          "type": "conversationalRetrievalQAChain",
+          "category": "chains",
+          "config": {
+            "returnSourceDocuments": true
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "chatOpenAI_1",
+        "target": "conversationalRetrievalQAChain_1",
+        "sourceHandle": "output",
+        "targetHandle": "model"
+      },
+      {
+        "id": "e2",
+        "source": "openAIEmbeddings_1",
+        "target": "pinecone_1",
+        "sourceHandle": "output",
+        "targetHandle": "embeddings"
+      },
+      {
+        "id": "e3",
+        "source": "pinecone_1",
+        "target": "conversationalRetrievalQAChain_1",
+        "sourceHandle": "output",
+        "targetHandle": "vectorStore"
+      },
+      {
+        "id": "e4",
+        "source": "bufferWindowMemory_1",
+        "target": "conversationalRetrievalQAChain_1",
+        "sourceHandle": "output",
+        "targetHandle": "memory"
+      }
+    ]
+  },
+  "isSample": true,
+  "sampleId": "conversational-retrieval-chain"
+}

@@ -1,0 +1,160 @@
+{
+  "id": "sample-web-scraper-qa-56a45229",
+  "name": "Web Scraper QA",
+  "description": "Webページをスクレイピングして質問に回答するフロー",
+  "tags": [
+    "sample",
+    "chatModels",
+    "embeddings",
+    "documentLoaders",
+    "textSplitters",
+    "vectorStores",
+    "chains"
+  ],
+  "icon": "🌐",
+  "createdAt": "2026-01-07T03:30:21.107Z",
+  "updatedAt": "2026-01-07T03:30:21.107Z",
+  "flow": {
+    "nodes": [
+      {
+        "id": "chatOpenAI_1",
+        "type": "chatOpenAI",
+        "position": {
+          "x": 100,
+          "y": 100
+        },
+        "data": {
+          "label": "ChatOpenAI",
+          "type": "chatOpenAI",
+          "category": "chatModels",
+          "config": {
+            "modelName": "gpt-3.5-turbo",
+            "temperature": 0.3,
+            "maxTokens": 2000
+          }
+        }
+      },
+      {
+        "id": "openAIEmbeddings_1",
+        "type": "openAIEmbeddings",
+        "position": {
+          "x": 100,
+          "y": 300
+        },
+        "data": {
+          "label": "OpenAI Embeddings",
+          "type": "openAIEmbeddings",
+          "category": "embeddings",
+          "config": {
+            "modelName": "text-embedding-ada-002"
+          }
+        }
+      },
+      {
+        "id": "webLoader_1",
+        "type": "webLoader",
+        "position": {
+          "x": 100,
+          "y": 500
+        },
+        "data": {
+          "label": "Web Loader",
+          "type": "webLoader",
+          "category": "documentLoaders",
+          "config": {
+            "url": "",
+            "selector": ""
+          }
+        }
+      },
+      {
+        "id": "recursiveTextSplitter_1",
+        "type": "recursiveCharacterTextSplitter",
+        "position": {
+          "x": 350,
+          "y": 500
+        },
+        "data": {
+          "label": "Text Splitter",
+          "type": "recursiveCharacterTextSplitter",
+          "category": "textSplitters",
+          "config": {
+            "chunkSize": 1000,
+            "chunkOverlap": 200
+          }
+        }
+      },
+      {
+        "id": "faiss_1",
+        "type": "faiss",
+        "position": {
+          "x": 350,
+          "y": 300
+        },
+        "data": {
+          "label": "FAISS Vector Store",
+          "type": "faiss",
+          "category": "vectorStores",
+          "config": {
+            "topK": 4
+          }
+        }
+      },
+      {
+        "id": "retrievalQAChain_1",
+        "type": "retrievalQAChain",
+        "position": {
+          "x": 600,
+          "y": 200
+        },
+        "data": {
+          "label": "Retrieval QA Chain",
+          "type": "retrievalQAChain",
+          "category": "chains",
+          "config": {
+            "returnSourceDocuments": true
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "chatOpenAI_1",
+        "target": "retrievalQAChain_1",
+        "sourceHandle": "output",
+        "targetHandle": "model"
+      },
+      {
+        "id": "e2",
+        "source": "openAIEmbeddings_1",
+        "target": "faiss_1",
+        "sourceHandle": "output",
+        "targetHandle": "embeddings"
+      },
+      {
+        "id": "e3",
+        "source": "webLoader_1",
+        "target": "recursiveTextSplitter_1",
+        "sourceHandle": "output",
+        "targetHandle": "document"
+      },
+      {
+        "id": "e4",
+        "source": "recursiveTextSplitter_1",
+        "target": "faiss_1",
+        "sourceHandle": "output",
+        "targetHandle": "document"
+      },
+      {
+        "id": "e5",
+        "source": "faiss_1",
+        "target": "retrievalQAChain_1",
+        "sourceHandle": "output",
+        "targetHandle": "vectorStore"
+      }
+    ]
+  },
+  "isSample": true,
+  "sampleId": "web-scraper-qa"
+}

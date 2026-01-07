@@ -41,6 +41,7 @@ import OutputIcon from '@mui/icons-material/Output';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import PauseCircleIcon from '@mui/icons-material/PauseCircle';
 import SkipNextIcon from '@mui/icons-material/SkipNext';
+import CloudIcon from '@mui/icons-material/Cloud';
 import { Node, Edge } from 'reactflow';
 import { CustomNodeData } from './CustomNode';
 import HumanReviewModal, { PendingReview, ReviewDecision } from './HumanReviewModal';
@@ -101,6 +102,8 @@ interface ExtendedExecutionResult extends FlowiseExecutionResult {
   pendingReview?: PendingReview;
   logs?: string[];
   nodeExecutionLogs?: NodeExecutionLog[];
+  executionMode?: 'flowise';
+  agentReasoning?: any[];
 }
 
 export default function TestRunModal({ open, onClose, nodes, edges }: TestRunModalProps) {
@@ -111,6 +114,7 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
   const [result, setResult] = useState<ExtendedExecutionResult | null>(null);
   const [expandedOwlAgents, setExpandedOwlAgents] = useState<Map<string, ExpandedOwlAgentInfo>>(new Map());
   const [isLoadingAgents, setIsLoadingAgents] = useState(false);
+  const [flowiseStatus, setFlowiseStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
 
   // Human Review状態
   const [pendingReview, setPendingReview] = useState<PendingReview | null>(null);
@@ -177,6 +181,21 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
       fetchOwlAgentDetails();
     }
   }, [open, owlAgentNodes.length, fetchOwlAgentDetails]);
+
+  // Flowiseサーバーの接続状態を確認
+  useEffect(() => {
+    if (open) {
+      setFlowiseStatus('checking');
+      fetch('/api/flowise/status')
+        .then((res) => res.json())
+        .then((data) => {
+          setFlowiseStatus(data.connected ? 'connected' : 'disconnected');
+        })
+        .catch(() => {
+          setFlowiseStatus('disconnected');
+        });
+    }
+  }, [open]);
 
   // バリデーション結果
   const validation = useMemo(() => {
@@ -261,7 +280,6 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
           previousOutputs: executionContext?.nodeOutputs,
           previousNodeExecutionLogs: previousLogs,
           input,
-          useNative: true,
         }),
       });
 
@@ -320,8 +338,17 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
   }, [pendingReview, nodes, edges, sessionId, executionContext, input]);
 
   const handleRun = async () => {
-    // ネイティブエンジンはより柔軟なので、ノードがあれば実行可能
+    // ノードがあれば実行可能
     if (!input.trim() || nodes.length === 0) return;
+
+    // Flowiseサーバーが接続されていない場合は実行不可
+    if (flowiseStatus === 'disconnected') {
+      setResult({
+        success: false,
+        error: 'Flowiseサーバーに接続できません。サーバーが起動しているか確認してください。',
+      });
+      return;
+    }
 
     setIsRunning(true);
     setResult(null);
@@ -330,7 +357,8 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
     setTabValue(2); // Executeタブに切り替え
 
     try {
-      // ネイティブエンジンAPIを直接呼び出し（Human Review対応）
+      console.log('[TestRunModal] Executing with Flowise backend');
+
       const response = await fetch('/api/flows/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -358,7 +386,6 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
           })),
           input,
           sessionId,
-          useNative: true,
         }),
       });
 
@@ -395,8 +422,11 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
           executionTime: data.executionTime,
           error: data.error,
           logs: data.logs,
-          usedTools: [{ tool: 'OwliaFabrica Native Engine', toolOutput: 'Executed successfully' }],
+          usedTools: data.usedTools || [{ tool: 'Flowise Backend', toolOutput: 'Executed successfully' }],
           nodeExecutionLogs: data.nodeExecutionLogs,
+          executionMode: 'flowise',
+          sourceDocuments: data.sourceDocuments,
+          agentReasoning: data.agentReasoning,
         });
       }
     } catch (error) {
@@ -451,14 +481,29 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
             Test Run
           </Typography>
+          {/* Flowise接続状態 */}
           <Chip
-            label="Native Engine"
+            icon={<CloudIcon sx={{ fontSize: 12 }} />}
+            label={
+              flowiseStatus === 'checking'
+                ? 'Checking...'
+                : flowiseStatus === 'connected'
+                ? 'Flowise Connected'
+                : 'Flowise Offline'
+            }
             size="small"
             sx={{
-              bgcolor: '#6366f1',
+              ml: 1,
+              bgcolor:
+                flowiseStatus === 'checking'
+                  ? '#666'
+                  : flowiseStatus === 'connected'
+                  ? '#4CAF50'
+                  : '#f44336',
               color: '#fff',
               fontSize: '0.65rem',
-              height: 20,
+              height: 22,
+              '& .MuiChip-icon': { color: '#fff' },
             }}
           />
         </Box>
@@ -672,9 +717,9 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
           {/* 実行中 */}
           {isRunning && !pendingReview && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-              <CircularProgress size={24} sx={{ color: '#6366f1' }} />
+              <CircularProgress size={24} sx={{ color: '#4CAF50' }} />
               <Typography sx={{ color: '#aaa' }}>
-                ネイティブエンジンでフローを実行中...
+                Flowiseバックエンドでフローを実行中...
               </Typography>
             </Box>
           )}
@@ -721,7 +766,7 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
           {/* 結果 */}
           {result && (
             <Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
                 <Typography sx={{ color: '#888', fontSize: '0.85rem' }}>Result</Typography>
                 <Chip
                   label={result.success ? 'Success' : 'Failed'}
@@ -733,6 +778,21 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
                     fontSize: '0.7rem',
                   }}
                 />
+                {/* 実行モード表示 */}
+                {result.executionMode && (
+                  <Chip
+                    icon={<CloudIcon sx={{ fontSize: 12 }} />}
+                    label="Flowise"
+                    size="small"
+                    sx={{
+                      bgcolor: '#2E7D32',
+                      color: '#fff',
+                      height: 20,
+                      fontSize: '0.65rem',
+                      '& .MuiChip-icon': { color: '#fff' },
+                    }}
+                  />
+                )}
                 {result.executionTime && (
                   <Typography sx={{ color: '#888', fontSize: '0.75rem' }}>
                     {result.executionTime}ms
@@ -963,6 +1023,70 @@ export default function TestRunModal({ open, onClose, nodes, edges }: TestRunMod
                         {doc.metadata && (
                           <Typography sx={{ fontSize: '0.7rem', color: '#666', mt: 0.5 }}>
                             Source: {doc.metadata.source || 'Unknown'}
+                          </Typography>
+                        )}
+                      </Box>
+                    ))}
+                  </AccordionDetails>
+                </Accordion>
+              )}
+
+              {/* Agent Reasoning (Flowise) */}
+              {result.agentReasoning && result.agentReasoning.length > 0 && (
+                <Accordion
+                  defaultExpanded
+                  sx={{
+                    bgcolor: '#252536',
+                    color: '#fff',
+                    mt: 2,
+                    '&:before': { display: 'none' },
+                  }}
+                >
+                  <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#888' }} />}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CloudIcon sx={{ color: '#4CAF50', fontSize: 18 }} />
+                      <Typography sx={{ fontSize: '0.85rem' }}>
+                        Agent Reasoning ({result.agentReasoning.length} steps)
+                      </Typography>
+                    </Box>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    {result.agentReasoning.map((reasoning: any, index: number) => (
+                      <Box
+                        key={index}
+                        sx={{
+                          p: 1.5,
+                          mb: 1,
+                          bgcolor: '#1e1e2f',
+                          borderRadius: 1,
+                          borderLeft: '3px solid #4CAF50',
+                        }}
+                      >
+                        {reasoning.agentName && (
+                          <Typography sx={{ fontSize: '0.85rem', color: '#4CAF50', fontWeight: 600, mb: 0.5 }}>
+                            {reasoning.agentName}
+                          </Typography>
+                        )}
+                        {reasoning.instructions && (
+                          <Typography sx={{ fontSize: '0.75rem', color: '#888', mb: 0.5 }}>
+                            Instructions: {reasoning.instructions}
+                          </Typography>
+                        )}
+                        {reasoning.messages && reasoning.messages.length > 0 && (
+                          <Box sx={{ mt: 0.5 }}>
+                            {reasoning.messages.map((msg: string, msgIndex: number) => (
+                              <Typography
+                                key={msgIndex}
+                                sx={{ fontSize: '0.8rem', color: '#aaa', whiteSpace: 'pre-wrap' }}
+                              >
+                                {msg}
+                              </Typography>
+                            ))}
+                          </Box>
+                        )}
+                        {reasoning.next && (
+                          <Typography sx={{ fontSize: '0.7rem', color: '#666', mt: 0.5 }}>
+                            Next: {reasoning.next}
                           </Typography>
                         )}
                       </Box>

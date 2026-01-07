@@ -1,0 +1,62 @@
+{
+  "name": "Basic Conversation Chain",
+  "description": "シンプルな会話チェーン - ChatOpenAI + BufferMemory + ConversationChain",
+  "nodes": [
+    {
+      "id": "chatOpenAI_1",
+      "type": "chatOpenAI",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "label": "ChatOpenAI",
+        "type": "chatOpenAI",
+        "category": "chatModels",
+        "config": {
+          "modelName": "gpt-3.5-turbo",
+          "temperature": 0.7,
+          "maxTokens": 2000
+        }
+      }
+    },
+    {
+      "id": "bufferMemory_1",
+      "type": "bufferMemory",
+      "position": { "x": 100, "y": 300 },
+      "data": {
+        "label": "Buffer Memory",
+        "type": "bufferMemory",
+        "category": "memory",
+        "config": {
+          "memoryKey": "chat_history",
+          "sessionId": ""
+        }
+      }
+    },
+    {
+      "id": "conversationChain_1",
+      "type": "conversationChain",
+      "position": { "x": 400, "y": 200 },
+      "data": {
+        "label": "Conversation Chain",
+        "type": "conversationChain",
+        "category": "chains",
+        "config": {}
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "chatOpenAI_1",
+      "target": "conversationChain_1",
+      "sourceHandle": "output",
+      "targetHandle": "model"
+    },
+    {
+      "id": "e2",
+      "source": "bufferMemory_1",
+      "target": "conversationChain_1",
+      "sourceHandle": "output",
+      "targetHandle": "memory"
+    }
+  ]
+}

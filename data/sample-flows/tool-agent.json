@@ -1,0 +1,99 @@
+{
+  "name": "Tool Agent with Calculator and Search",
+  "description": "ツールを使用するエージェント - Calculator + SerpAPI + OpenAI Function Agent",
+  "nodes": [
+    {
+      "id": "chatOpenAI_1",
+      "type": "chatOpenAI",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "label": "ChatOpenAI (GPT-4)",
+        "type": "chatOpenAI",
+        "category": "chatModels",
+        "config": {
+          "modelName": "gpt-4",
+          "temperature": 0,
+          "maxTokens": 2000
+        }
+      }
+    },
+    {
+      "id": "calculator_1",
+      "type": "calculator",
+      "position": { "x": 100, "y": 300 },
+      "data": {
+        "label": "Calculator",
+        "type": "calculator",
+        "category": "tools",
+        "config": {}
+      }
+    },
+    {
+      "id": "serpAPI_1",
+      "type": "serpAPI",
+      "position": { "x": 100, "y": 450 },
+      "data": {
+        "label": "SerpAPI (Google Search)",
+        "type": "serpAPI",
+        "category": "tools",
+        "config": {}
+      }
+    },
+    {
+      "id": "bufferMemory_1",
+      "type": "bufferMemory",
+      "position": { "x": 100, "y": 600 },
+      "data": {
+        "label": "Buffer Memory",
+        "type": "bufferMemory",
+        "category": "memory",
+        "config": {
+          "memoryKey": "chat_history"
+        }
+      }
+    },
+    {
+      "id": "openAIFunctionAgent_1",
+      "type": "openAIFunctionAgent",
+      "position": { "x": 450, "y": 300 },
+      "data": {
+        "label": "OpenAI Function Agent",
+        "type": "openAIFunctionAgent",
+        "category": "agents",
+        "config": {
+          "systemMessage": "You are a helpful assistant that can search the web and perform calculations."
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "chatOpenAI_1",
+      "target": "openAIFunctionAgent_1",
+      "sourceHandle": "output",
+      "targetHandle": "model"
+    },
+    {
+      "id": "e2",
+      "source": "calculator_1",
+      "target": "openAIFunctionAgent_1",
+      "sourceHandle": "output",
+      "targetHandle": "tools"
+    },
+    {
+      "id": "e3",
+      "source": "serpAPI_1",
+      "target": "openAIFunctionAgent_1",
+      "sourceHandle": "output",
+      "targetHandle": "tools"
+    },
+    {
+      "id": "e4",
+      "source": "bufferMemory_1",
+      "target": "openAIFunctionAgent_1",
+      "sourceHandle": "output",
+      "targetHandle": "memory"
+    }
+  ]
+}

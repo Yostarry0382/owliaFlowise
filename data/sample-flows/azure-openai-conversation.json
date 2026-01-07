@@ -1,0 +1,60 @@
+{
+  "name": "Azure OpenAI Conversation",
+  "description": "Azure OpenAIを使用した会話チェーン（環境変数から自動設定）",
+  "nodes": [
+    {
+      "id": "azureChatOpenAI_1",
+      "type": "azureChatOpenAI",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "label": "Azure ChatOpenAI",
+        "type": "azureChatOpenAI",
+        "category": "chatModels",
+        "config": {
+          "temperature": 0.7,
+          "maxTokens": 2000
+        }
+      }
+    },
+    {
+      "id": "bufferMemory_1",
+      "type": "bufferMemory",
+      "position": { "x": 100, "y": 300 },
+      "data": {
+        "label": "Buffer Memory",
+        "type": "bufferMemory",
+        "category": "memory",
+        "config": {
+          "memoryKey": "chat_history"
+        }
+      }
+    },
+    {
+      "id": "conversationChain_1",
+      "type": "conversationChain",
+      "position": { "x": 400, "y": 200 },
+      "data": {
+        "label": "Conversation Chain",
+        "type": "conversationChain",
+        "category": "chains",
+        "config": {}
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "azureChatOpenAI_1",
+      "target": "conversationChain_1",
+      "sourceHandle": "output",
+      "targetHandle": "model"
+    },
+    {
+      "id": "e2",
+      "source": "bufferMemory_1",
+      "target": "conversationChain_1",
+      "sourceHandle": "output",
+      "targetHandle": "memory"
+    }
+  ]
+}

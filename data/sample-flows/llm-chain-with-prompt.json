@@ -1,0 +1,62 @@
+{
+  "name": "LLM Chain with Custom Prompt",
+  "description": "カスタムプロンプトテンプレートを使用したLLMチェーン",
+  "nodes": [
+    {
+      "id": "chatOpenAI_1",
+      "type": "chatOpenAI",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "label": "ChatOpenAI",
+        "type": "chatOpenAI",
+        "category": "chatModels",
+        "config": {
+          "modelName": "gpt-3.5-turbo",
+          "temperature": 0.7,
+          "maxTokens": 1000
+        }
+      }
+    },
+    {
+      "id": "promptTemplate_1",
+      "type": "promptTemplate",
+      "position": { "x": 100, "y": 300 },
+      "data": {
+        "label": "Prompt Template",
+        "type": "promptTemplate",
+        "category": "prompts",
+        "config": {
+          "template": "You are a helpful assistant specialized in {topic}.\n\nUser question: {input}\n\nPlease provide a detailed and accurate response.",
+          "inputVariables": ["topic", "input"]
+        }
+      }
+    },
+    {
+      "id": "llmChain_1",
+      "type": "llmChain",
+      "position": { "x": 400, "y": 200 },
+      "data": {
+        "label": "LLM Chain",
+        "type": "llmChain",
+        "category": "chains",
+        "config": {}
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "chatOpenAI_1",
+      "target": "llmChain_1",
+      "sourceHandle": "output",
+      "targetHandle": "model"
+    },
+    {
+      "id": "e2",
+      "source": "promptTemplate_1",
+      "target": "llmChain_1",
+      "sourceHandle": "output",
+      "targetHandle": "prompt"
+    }
+  ]
+}

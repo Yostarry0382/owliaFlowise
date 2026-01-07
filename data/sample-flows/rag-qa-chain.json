@@ -1,0 +1,124 @@
+{
+  "name": "RAG Q&A Chain",
+  "description": "RAG（Retrieval Augmented Generation）パターン - PDF読み込み + ベクトルストア + 質問応答",
+  "nodes": [
+    {
+      "id": "chatOpenAI_1",
+      "type": "chatOpenAI",
+      "position": { "x": 100, "y": 100 },
+      "data": {
+        "label": "ChatOpenAI",
+        "type": "chatOpenAI",
+        "category": "chatModels",
+        "config": {
+          "modelName": "gpt-3.5-turbo",
+          "temperature": 0.3,
+          "maxTokens": 2000
+        }
+      }
+    },
+    {
+      "id": "openAIEmbeddings_1",
+      "type": "openAIEmbeddings",
+      "position": { "x": 100, "y": 300 },
+      "data": {
+        "label": "OpenAI Embeddings",
+        "type": "openAIEmbeddings",
+        "category": "embeddings",
+        "config": {
+          "modelName": "text-embedding-ada-002"
+        }
+      }
+    },
+    {
+      "id": "pdfLoader_1",
+      "type": "pdfLoader",
+      "position": { "x": 100, "y": 500 },
+      "data": {
+        "label": "PDF Loader",
+        "type": "pdfLoader",
+        "category": "documentLoaders",
+        "config": {
+          "usage": "perPage"
+        }
+      }
+    },
+    {
+      "id": "recursiveTextSplitter_1",
+      "type": "recursiveCharacterTextSplitter",
+      "position": { "x": 350, "y": 500 },
+      "data": {
+        "label": "Text Splitter",
+        "type": "recursiveCharacterTextSplitter",
+        "category": "textSplitters",
+        "config": {
+          "chunkSize": 1000,
+          "chunkOverlap": 200
+        }
+      }
+    },
+    {
+      "id": "inMemoryVectorStore_1",
+      "type": "inMemoryVectorStore",
+      "position": { "x": 350, "y": 300 },
+      "data": {
+        "label": "In-Memory Vector Store",
+        "type": "inMemoryVectorStore",
+        "category": "vectorStores",
+        "config": {
+          "topK": 4
+        }
+      }
+    },
+    {
+      "id": "retrievalQAChain_1",
+      "type": "retrievalQAChain",
+      "position": { "x": 600, "y": 200 },
+      "data": {
+        "label": "Retrieval QA Chain",
+        "type": "retrievalQAChain",
+        "category": "chains",
+        "config": {
+          "returnSourceDocuments": true
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "chatOpenAI_1",
+      "target": "retrievalQAChain_1",
+      "sourceHandle": "output",
+      "targetHandle": "model"
+    },
+    {
+      "id": "e2",
+      "source": "openAIEmbeddings_1",
+      "target": "inMemoryVectorStore_1",
+      "sourceHandle": "output",
+      "targetHandle": "embeddings"
+    },
+    {
+      "id": "e3",
+      "source": "pdfLoader_1",
+      "target": "recursiveTextSplitter_1",
+      "sourceHandle": "output",
+      "targetHandle": "document"
+    },
+    {
+      "id": "e4",
+      "source": "recursiveTextSplitter_1",
+      "target": "inMemoryVectorStore_1",
+      "sourceHandle": "output",
+      "targetHandle": "document"
+    },
+    {
+      "id": "e5",
+      "source": "inMemoryVectorStore_1",
+      "target": "retrievalQAChain_1",
+      "sourceHandle": "output",
+      "targetHandle": "vectorStore"
+    }
+  ]
+}
